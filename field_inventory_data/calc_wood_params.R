@@ -4,8 +4,8 @@ library(readr)
 
 # Creating results file if it doesn't already exist
 if (!file.exists("results.csv")) {
-  results <- data.frame(reference = character(), volume = numeric(),
-                        mid_circ = numeric(), total_length = numeric())
+  results <- data.frame(reference = character(), total_length = numeric(),
+                        mid_circ = numeric(), volume = numeric())
   write.table(results, file = "results.csv", sep = ";", row.names = FALSE,
               col.names = TRUE)
 }
@@ -39,17 +39,21 @@ wood_params <- function(file) {
     to_sum <- append(to_sum, calc)
     
     # Determining the mid-circumference
-    if (cumul_length == mid_length) {
+    if ((cumul_length == mid_length)&(mid_circ == 0)) {
       mid_circ <- circ[i]
     }
-    else if (cumul_length > mid_length) {
+    else if ((cumul_length > mid_length)&(mid_circ == 0)) {
       mid_circ <- (circ[i-1]+circ[i])/2
     }
+    else if ((mid_circ == 0)&(i == (nrow(data)-1))) { # part. case, when 1-2 rows
+      mid_circ <- (circ[i]+circ[i+1])/2
+    }
+    
     cumul_length = cumul_length + len[i]
   }
   
   volume <- sum(to_sum)/(12*pi)
-  total_length <- total_length*0.01 # converting into meters
+  total_length <- total_length*0.01 # converting into metres
   
   # Saving in the results file
   
@@ -58,13 +62,13 @@ wood_params <- function(file) {
   results_data <- read.csv2(results_file)
   
   if (!(reference %in% results_data$reference)) { # to avoid duplication
-    row <- data.frame(reference, volume, mid_circ, total_length)
-    write.table(row, file=results_file,
-                sep=";", append = TRUE, quote = FALSE, col.names = FALSE,
-                row.names = FALSE)
+    row <- data.frame(reference, total_length, mid_circ, volume)
+    write.table(row, file=results_file, sep=";", append = TRUE, quote = FALSE,
+                col.names = FALSE, row.names = FALSE)
   }
 }
 
+# Listing all csv files paths
 csv_files <- list.files(pattern = "\\.csv$", full.names = TRUE)
 csv_files <- setdiff(csv_files, "./results.csv") # removing the results file path
 results_file <- "results.csv"
