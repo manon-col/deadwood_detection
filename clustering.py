@@ -6,10 +6,6 @@ import numpy as np
 import random
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
-# import pandas as pd
-# from sklearn.decomposition import PCA
-# from sklearn.linear_model import RANSACRegressor
-# from sklearn.pipeline import make_pipeline
 
 class deadwood_detection:
     """
@@ -44,19 +40,19 @@ class deadwood_detection:
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
     
-    def clustering(self, eps=0.02, min_samples=5):
+    def clustering(self, eps=0.05, min_samples=100):
         """
         An euclidian clustering operation of points of the las file, using the
         DBSCAN algorithm.
         
         Parameters
         ----------
-        eps : float
+        eps : float, optional
             The maximum distance between two samples for one to be considered
             as in the neighborhood of the other. This is not a maximum bound on
             the distances of points within a cluster. This is the most
             important DBSCAN parameter to choose appropriately for your data
-            set and distance function. The default is 0.02.
+            set and distance function. The default is 0.05.
         min_samples : float, optional
             The number of samples (or total weight) in a neighborhood for a
             point to be considered as a core point. This includes the point
@@ -65,10 +61,10 @@ class deadwood_detection:
         """
                 
         # Running DBSCAN algorithm
-        clustering = DBSCAN(eps=0.05, min_samples=50).fit(self._data_xyz)
+        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(self._data_xyz)
         
         # Clustering results, re-labelled to start from 0 instead of -1
-        self._labels = clustering.labels_ + 1
+        self._labels = clustering.labels_+1
     
         # Number of clusters in labels, ignoring noise (0) if present
         unique_labels = set(self._labels)
@@ -88,8 +84,9 @@ class deadwood_detection:
     
     def draw_clusters(self):
         """
-        Draw the clustering results, with each cluster in a different color and
-        outliers in black.
+        Draw the clustering results, with points in the same cluster of the
+        same colour.
+        
         """
         
         if self._clusters:
@@ -100,23 +97,19 @@ class deadwood_detection:
             
             for cluster in self._clusters:
                 
-                if not cluster.is_filtered:
+                if not (cluster.is_filtered()):
                     
-                    if cluster.get_label() == 0:
-                        # Outliers (noise) in black
-                        color = 'k'
-                    
-                    else:
-                        # Cluster points of the same (randomly chosen) color
-                        color = '#'+''.join(random.choices('0123456789ABCDEF',
-                                                           k=6))
+                    # Cluster points of the same (randomly chosen) color
+                    random.seed(cluster.get_label())
+                    color = '#' + ''.join(random.choices('0123456789ABCDEF',
+                                                             k=6))
                     
                     # Get current cluster points
                     cluster_points = cluster.get_points()
                     
                     # Draw cluster points
                     ax.scatter(cluster_points[:, 0], cluster_points[:, 1],
-                                cluster_points[:, 2], c=color, marker='o')
+                               cluster_points[:, 2], c=color, marker='o')
         
             # Axes and title
             ax.set_xlabel('X')
@@ -136,21 +129,22 @@ class deadwood_detection:
 
         """
         if self._clusters:
-
+            
             # Creating a copy of the original file
             new_las = self._las
             
-            # Adding a new field "cluster"
-            new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
-                                                         type=np.uint8))
+            # # Adding a new field "cluster"
+            # new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
+                                                          # type=np.uint8))
             
-            # Filling the field
+            # Filling the "classification" field
             for index in range(len(self._data_xyz)):
                 
                 label = self._labels[index]
-                if not self._clusters[label].is_filtered:
-                    new_las.cluster[index] = self._labels[index]
-            
+                
+                if not self._clusters[label].is_filtered():
+                    new_las.classification[index] = label
+                                
             # To solve an issue with point format / file version
             new_las = laspy.convert(new_las, point_format_id=7)
             
@@ -160,22 +154,37 @@ class deadwood_detection:
         else: print("Please run the clustering method first.")
         
     def filtering(self, nb_points=500):
+        """
+        Basic cluster filter based on a minimum number of points.
+
+        Parameters
+        ----------
+        nb_points : integer, optional
+            Minimum number of points a cluster must contain. The default is 500.
+            
+        """
         
         if self._clusters:
             
-            n=0
+            n=0 # filtered cluster counter
+            
             for cluster in self._clusters:
-                if len(cluster.get_points()) < nb_points:
-                    cluster.is_filtered = True
+                
+                # Filtering cluster that have above nb_points and noise cluster
+                if len(cluster.get_points()) < nb_points or\
+                    cluster.get_label() == 0:
+                    
+                    cluster.is_filtered(True)
                     n+=1
-            print(n+" clusters filtered.")
+            
+            print(str(n)+" clusters filtered")
         
         else: print("Please run the clustering method first.")
     
     def reset_filtering(self):
         
         for cluster in self._clusters:
-            cluster.is_filtered = False
+            cluster.is_filtered(False)
 
 class cluster:
     """
@@ -184,10 +193,13 @@ class cluster:
     """
     
     def __init__(self, label, points):
-        self._label = str(label)
+        self._label = int(label)
         self._points = points
-        self._cylinder_models = None
         self._filtered = False
+    
+    def __str__(self):
+        return(f"Cluster {self._label}, {len(self._points)} points, filtering "
+               +f"state: {self._filtered}")
     
     def get_label(self):
         return(self._label)
@@ -211,4 +223,4 @@ test = deadwood_detection("output_computree.las")
 test.clustering()
 test.filtering()
 test.draw_clusters()
-# test.save_clusters()
+test.save_clusters()
