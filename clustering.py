@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-
-# Needs laspy, laspy[lazrs,laszip], scikit-learn installed
+"""
+@author: manon-col
+"""
 
 import os
 import laspy
-import numpy as np
-import csv
 import random
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
@@ -42,42 +41,7 @@ class deadwood_detection:
         self._clusters = []
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
-    
-    def clip(self, radius=22):
-        # Needs to be tested.
-        """
-        Clip the point cloud into a circle of a given radius around a centre
-        with known coordinates. The centre coordinates are saved in the file
-        "sphere_coordinates.csv", the reference of the sphere coordinates must
-        be the same as the las filename.
 
-        """
-        
-        with open('spheres_coordinates.csv') as file:
-            csv_file = csv.DictReader(file)
-            
-            for row in csv_file:
-                
-                if row['reference'] == self._filename:
-                    x_centre = row['Xcentre']
-                    y_centre = row['Ycentre']
-                    # z_centre = row['Zcentre']
-                    # centre_coords = np.array([x_centre, y_centre, z_centre])
-        
-        clip_las = laspy.create(point_format=7,
-                                file_version=self._las.header.version)
-        
-        points = self._las.points
-        for i in range(len(points)):
-            
-            point = points[i]
-            dist = np.sqrt((point.x-x_centre)**2+(point.y-y_centre)**2)
-            
-            if dist <= radius:
-                clip_las.points[len(clip_las.points)]=point
-                
-        clip_las.write(self._filename+'_clip.las')
-            
     def clustering(self, eps=0.05, min_samples=100):
         """
         An euclidian clustering operation of points of the las file, using the
@@ -220,9 +184,14 @@ class deadwood_detection:
         else: print("Please run the clustering method first.")
     
     def reset_filtering(self):
+        """
+        Set the status of all clusters to unfiltered.
+        
+        """
         
         for cluster in self._clusters:
             cluster.is_filtered(False)
+
 
 class cluster:
     """
@@ -255,10 +224,3 @@ class cluster:
         if boolean == None: return(self._filtered)
         
         else: self._filtered = boolean
-
-# Test
-# test = deadwood_detection("output_computree.las")
-# test.clustering()
-# test.filtering()
-# test.draw_clusters()
-# test.save_clusters()
