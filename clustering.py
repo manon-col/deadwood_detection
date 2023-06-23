@@ -3,11 +3,13 @@
 @author: manon-col
 """
 
+
 import os
 import laspy
 import random
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
+
 
 class deadwood_detection:
     """
@@ -126,19 +128,15 @@ class deadwood_detection:
     
     def save_clusters(self):
         """
-        Save the clustering results in a new las file, with an extra dimension
-        containing the cluster reference (noise is in "0" category).
+        Save the clustering results in a new las file, with the cluster label
+        in the classification field (noise is in "0" category).
 
         """
         if self._clusters:
             
             # Creating a copy of the original file
             new_las = self._las
-            
-            # # Adding a new field "cluster"
-            # new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
-                                                          # type=np.uint8))
-            
+                        
             # Filling the "classification" field
             for index in range(len(self._data_xyz)):
                 
@@ -151,7 +149,7 @@ class deadwood_detection:
             new_las = laspy.convert(new_las, point_format_id=7)
             
             # Saving las file with clustered points
-            new_las.write(self._filename+'_clusters.las')
+            new_las.write('cluster_outputs/'+self._filename+'_clusters.las')
         
         else: print("Please run the clustering method first.")
         
