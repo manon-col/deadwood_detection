@@ -27,10 +27,10 @@ def convert(file):
     new_las = laspy.convert(new_las, point_format_id=7)
     
     # Saving converted file
-    new_las.write('../converted/' + filename + '_pt7.las')
+    new_las.write('converted/' + filename + '_pt7.las')
 
 # Listing all las files
-las_files = glob.glob('../to_convert/*.las')
+las_files = glob.glob('to_convert/*.las')
 
 for file in las_files:
     convert(file)
