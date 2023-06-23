@@ -1,6 +1,5 @@
 library(readr)
 
-# /!\ all the csv files must be in the working directory
 
 # Creating results file if it doesn't already exist
 if (!file.exists("results.csv")) {
@@ -10,10 +9,11 @@ if (!file.exists("results.csv")) {
               col.names = TRUE)
 }
 
-# Function that estimates the volume of the tree whose lengths and
-# circumferences are inventoried in the csv file. Also calculates its total
-# length and mid-circumference. Estimates are listed in the results file.
+
 wood_params <- function(file) {
+  #'Estimate the volume of the three whose lenghts and circumferences are
+  #'inventoried in the csv file. Calculate its total length and mid-
+  #'circumference. Estimates are listed in the results file.
   
   # Reading data, getting circumferences and lengths
   data <- read.csv2(file)
