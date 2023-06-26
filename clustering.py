@@ -5,10 +5,13 @@
 
 
 import os
+import glob
 import laspy
 import random
-from sklearn.cluster import DBSCAN
+import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
+from scipy.spatial.distance import cdist
 
 
 class deadwood_detection:
@@ -43,6 +46,8 @@ class deadwood_detection:
         self._clusters = []
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
+        
+        print("File "+self._filename+".las loaded successfully.")
 
     def clustering(self, eps=0.05, min_samples=100):
         """
@@ -56,20 +61,22 @@ class deadwood_detection:
             as in the neighborhood of the other. This is not a maximum bound on
             the distances of points within a cluster. This is the most
             important DBSCAN parameter to choose appropriately for your data
-            set and distance function. The default is 0.05.
+            set and distance function. The default is 0.05m.
         min_samples : float, optional
             The number of samples (or total weight) in a neighborhood for a
             point to be considered as a core point. This includes the point
             itself. The default is 100.
     
         """
-                
+          
+        print("Clustering "+self._filename+".las points...")
+        
         # Running DBSCAN algorithm
         clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(self._data_xyz)
         
         # Clustering results, re-labelled to start from 0 instead of -1
         self._labels = clustering.labels_+1
-    
+        
         # Number of clusters in labels, ignoring noise (0) if present
         unique_labels = set(self._labels)
         n_clusters = len(unique_labels) - (1 if 0 in self._labels else 0)
@@ -82,7 +89,7 @@ class deadwood_detection:
             
             # Creating cluster object
             self._clusters.append(cluster(label, cluster_points))
-    
+        
         print("Estimated number of clusters: %d" % n_clusters)
         print("Estimated number of noise points: %d" % n_noise)
     
@@ -92,6 +99,8 @@ class deadwood_detection:
         same colour.
         
         """
+        
+        print("Drawing clusters...")
         
         if self._clusters:
             
@@ -123,6 +132,8 @@ class deadwood_detection:
             
             # Showing the plot
             plt.show()
+            
+            print("See plot.")
         
         else: print("Please run the clustering method first.")
     
@@ -132,6 +143,9 @@ class deadwood_detection:
         in the classification field (noise is in "0" category).
 
         """
+        
+        print("Saving clustering results...")
+        
         if self._clusters:
             
             # Creating a copy of the original file
@@ -150,19 +164,28 @@ class deadwood_detection:
             
             # Saving las file with clustered points
             new_las.write('cluster_outputs/'+self._filename+'_clusters.las')
+            
+            print("Clustering results successfully saved in "+self._filename+
+                  "_clusters.las")
         
         else: print("Please run the clustering method first.")
         
-    def filtering(self, nb_points=500):
+    def filtering(self, nb_points=500, min_dist=1):
         """
-        Basic cluster filter based on a minimum number of points.
+        Basic cluster filter based on a minimum number of points and a minimum
+        maximal length.
 
         Parameters
         ----------
         nb_points : integer, optional
             Minimum number of points a cluster must contain. The default is 500.
+        min_dist: integer, optional
+            Minimum distance that the 2 furthest points of the cluster must be
+            from each other.
             
         """
+        
+        print("Filtering clusters...")
         
         if self._clusters:
             
@@ -170,14 +193,44 @@ class deadwood_detection:
             
             for cluster in self._clusters:
                 
-                # Filtering cluster that have above nb_points and noise cluster
-                if len(cluster.get_points()) < nb_points or\
-                    cluster.get_label() == 0:
+                # Filtering noise cluster
+                if cluster.get_label() == 0:
                     
                     cluster.is_filtered(True)
                     n+=1
+                
+                # Filtering clusters that have above nb_points
+                elif len(cluster.get_points()) < nb_points:
+                    
+                    cluster.is_filtered(True)
+                    n+=1
+                
+                # Filtering clusters that have a length < min_dist
+                else:
+                                        
+                    try:
+                        
+                        # Getting cluster points
+                        points = cluster.get_points()
+                        
+                        # Calculating distances between all points
+                        distances = cdist(points, points, 'euclidean')
+                        
+                        # Getting max distance
+                        max_dist = np.max(distances)
+                        
+                        if max_dist < min_dist:
+                            
+                            cluster.is_filtered(True)
+                            n+=1
+                        
+                    except MemoryError:
+                        
+                        print("MemoryError: Skipping cluster due to excessive"+
+                              " memory usage.")
+        
             
-            print(str(n)+" clusters filtered")
+            print(str(n)+" clusters filtered.")
         
         else: print("Please run the clustering method first.")
     
@@ -217,8 +270,22 @@ class cluster:
         Update the filtering status if boolean (True or False) is specified.
         Else, return the filtering status. A filtered cluster will be removed
         from the point cloud.
+        
         """
         
         if boolean == None: return(self._filtered)
         
         else: self._filtered = boolean
+
+
+# Listing all las files
+las_files = glob.glob('computree_outputs/*.las')
+
+for file in las_files:
+    
+    cl = deadwood_detection(file)
+    # Note: distances are *1000 because units in my las files are in mm
+    cl.clustering(eps=50)
+    cl.filtering(min_dist=1000)
+    cl.draw_clusters()
+    cl.save_clusters()
