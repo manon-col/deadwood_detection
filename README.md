@@ -7,8 +7,7 @@ Note: .las files are not visible in the repo because they are too large.
 
 #### Documentation:
 ``https://laspy.readthedocs.io/en/latest/index.html``\
-``https://scikit-learn.org/stable/modules/generated/sklearn.cluster.DBSCAN.html``
-\
+``https://scikit-learn.org/stable/``\
 \
 \
 Work in progress...
