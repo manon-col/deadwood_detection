@@ -19,7 +19,8 @@ import pandas as pd
 class cylinder:
     """
     Manage a point cloud representing an (imperfect) cylinder model contained
-    in a .txt file (cloud ASCII).
+    in a .txt file (cloud ASCII). The file must contain all coordinates and
+    already computed normals.
     
     """
     
@@ -61,15 +62,16 @@ class cylinder:
         # Checking if the angle is within the range of -angle to +angle degrees
         if abs(angle_deg) > angle: self._filtered = True
     
-    def save(self, directory):
+    def save(self, folder):
         """
-        Save a copy of the cylinder file in a specified directory.
+        Save a copy of the cylinder file in a specified folder.
         
         """
         
         if self._filtered == False:
-            dest = directory+'/'+self._filename+'.txt'
+            dest = folder+'/'+self._filename+'.txt'
             shutil.copy2(self._file, dest)
+
 
 def rename_all(path):
     """
@@ -102,10 +104,10 @@ def rename_all(path):
 path_raw = 'cylinders_raw'
 path_filtered = 'cylinders_filtered'
 
-# Browsing all directories in initial path
-for directory in glob.glob(path_raw+'/*'):
+# Browsing all folders in initial path
+for folder in glob.glob(path_raw+'/*'):
 
-    dir_name = os.path.splitext(os.path.basename(directory))[0]
+    dir_name = os.path.splitext(os.path.basename(folder))[0]
 
     # Checking if processing is not already done
     if dir_name not in os.listdir(path_filtered):
@@ -115,7 +117,7 @@ for directory in glob.glob(path_raw+'/*'):
         os.makedirs(dest)
         
         # Browsing all .txt files
-        for file in glob.glob(directory+'/*.txt'):
+        for file in glob.glob(folder+'/*.txt'):
             
             cyl = cylinder(file)
             cyl.orientation_filter()
