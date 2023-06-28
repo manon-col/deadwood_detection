@@ -72,7 +72,7 @@ class deadwood_detection:
         print("Clustering "+self._filename+".las points...")
         
         # Running DBSCAN algorithm
-        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(self._data_xyz)
+        clustering=DBSCAN(eps=eps, min_samples=min_samples).fit(self._data_xyz)
         
         # Clustering results, re-labelled to start from 0 instead of -1
         self._labels = clustering.labels_+1
@@ -181,7 +181,7 @@ class deadwood_detection:
             Minimum number of points a cluster must contain. The default is 500.
         min_dist: integer, optional
             Minimum distance that the 2 furthest points of the cluster must be
-            from each other.
+            from each other. The default is 1m.
             
         """
         
@@ -229,7 +229,6 @@ class deadwood_detection:
                         print("MemoryError: Skipping cluster due to excessive"+
                               " memory usage.")
         
-            
             print(str(n)+" clusters filtered.")
         
         else: print("Please run the clustering method first.")
@@ -278,6 +277,11 @@ class cluster:
         else: self._filtered = boolean
 
 
+# =============================================================================
+# Main program
+# =============================================================================
+
+
 # Listing all las files to cluster
 las_files = glob.glob('computree_outputs/*.las')
 
@@ -286,7 +290,6 @@ clustered = glob.glob('cluster_outputs/*.las')
 clustered_names = [os.path.splitext(os.path.basename(file))[0] for file in\
                    clustered]
 
-    
 for file in las_files:
     
     # Checking if not already clustered
@@ -294,8 +297,7 @@ for file in las_files:
     clustered_names:
         
         cl = deadwood_detection(file)
-        # Note: distances are *1000 because units in my las files are in mm
-        cl.clustering(eps=50)
-        cl.filtering(min_dist=1000)
-        cl.draw_clusters()
+        cl.clustering()
+        cl.filtering()
+        # cl.draw_clusters()
         cl.save_clusters()
