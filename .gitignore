@@ -2,3 +2,4 @@
 *.laz
 *.las
 scans/.Rhistory
+.Rhistory
