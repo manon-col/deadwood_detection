@@ -19,15 +19,16 @@ import matplotlib.pyplot as plt
 from pyntcloud import PyntCloud
 # from scipy.spatial import ConvexHull
 from sklearn.decomposition import PCA
+from scipy.spatial.distance import cdist
 from sklearn.covariance import MinCovDet
 from sklearn.preprocessing import StandardScaler
 
 
 class shape_processing:
     """
-    Manage a point cloud representing an (imperfect) cylinder model contained
-    in a .txt file (cloud ASCII). The file must contain all coordinates and
-    already computed normals.
+    Manage a point cloud representing an (imperfect) cylinder shape contained
+    in a .txt file (cloud ASCII), with different filtering methods. The file
+    must contain all coordinates and have headers as column titles.
     
     """
     
@@ -41,48 +42,122 @@ class shape_processing:
         self._data = pd.read_csv(self._file, delimiter=' ', header=0)
         # Extracting coordinates
         self._xyz = self._data[['//X', 'Y', 'Z']].values
-        # Extraction normals
-        self._normals = self._data[['Nx', 'Ny', 'Nz']].values
         # Filtering state
         self._filtered = False
         
         print("File "+self._filename+".txt loaded successfully.")
-        
-    def orientation_filter(self, angle=45):
+    
+    def inclination_filter(self, angle=45):
         """
-        Calculate shape orientation and applicate a filter.
+        Calculate shape inclination to the vertical axis and applicate a filter
+        based on angle value.
 
         Parameters
         ----------
         angle : integer, optional
-            Minimum inclination the shape must have. The default is 45.
+            Maximum inclination the shape must have (regarding vertical ax).
+            The default is 45. Note: angle of 0° corresponds to a vertical
+            shape, angle of 90° (max value) correponds to an horizontal shape.
 
         """
-                
-        # Calculating the mean vector of the normals
-        mean_vector = np.mean(self._normals, axis=0)
         
-        # Normalizing the orientation vector
-        normalized_vector = mean_vector/np.linalg.norm(mean_vector)
+        if self._filtered == False:
+            
+            # Perform PCA to find the principal components
+            pca = PCA(n_components=3)
+            pca.fit(self._xyz)
+        
+            # Get the first principal component (estimated axis of the shape)
+            estimated_axis = pca.components_[0]
+        
+            # Compute the inclination angle of the estimated axis
+            dot_product = np.dot(estimated_axis, np.array([0, 0, 1]))
+            angle_rad = np.arccos(dot_product)
+            angle_deg = np.degrees(angle_rad)
+            
+            # Adjusting the angle to be in the range [0, 90]
+            adjusted_angle = angle_deg if angle_deg <= 90 else 180 - angle_deg
+        
+            # Check if the absolute angle is greater than the specified angle
+            abs_angle = abs(adjusted_angle)
+            if abs_angle < angle: self._filtered = True
+            
+            print("Angle: "+str(abs_angle))       
     
-        # Computing the dot product between the normalized vector and the
-        # vertical axis (0, 0, 1)
-        dot_product = np.dot(normalized_vector, np.array([0, 0, 1]))
+    def distance_from_centre(self, plot_name, distance=18):
+        """
+        Check whether most of the object is located within a circle of radius
+        "distance" from the centre of the plot. The centre coordinates are in
+        the file "spheres_coordinates.csv".
+        
+        Parameters
+        ----------
+        plot_name : string
+            Plot reference, has to be the same as in the sphere_coordinates
+            file.
+        distance : integer, optional
+            Actual radius of the inventory plot. The default is 18m.
+        
+        """
+        
+        if self._filtered == False:
+            
+            # Get xy coordinates only
+            points_xy = self._xyz[:, :2]
+            
+            df = pd.read_csv('spheres_coordinates.csv', sep=';')
+            centre_xy = np.array(df.loc[df['reference'] == plot_name,
+                                     ['Xcentre', 'Ycentre']])
+                        
+            # Calculate euclidean distances between each point and the centre
+            distances = cdist(points_xy, centre_xy, 'euclidean')[0]
+            
+            # Calculate the percentage of points within 18m of the centre
+            percentage = np.mean(distances < 18) * 100
+            
+            if percentage < 50: self._filtered = True
+            
+            print("Percentage of points in the plot: "+str(percentage))
     
-        # Computing the angle between the vectors in radians
-        angle_rad = np.arccos(dot_product)
-    
-        # Converting the angle to degrees, handling cases where the angle is
-        # greater than 90 degrees
-        angle_deg = np.degrees(angle_rad) if angle_rad <= np.pi/2 else 180 - \
-            np.degrees(angle_rad)
+    def flying_filter(self, delta = 0.05):
+        """
+        Filter "flying" branches whose lowest point is more than delta metres
+        from the ground. Works better if the points have an altitude of 0...
         
-        # Checking if the absolute angle is greater than the specified angle
-        abs_angle = abs(angle_deg)
+        Parameters
+        ----------
+        delta : float, optional
+            Maximum distance from the ground. The default is 0.05m.
+            
+        """
         
-        if abs_angle > angle: self._filtered = True
+        # Lowest z-value
+        min_z = np.min(self._xyz[:, 2])
         
-        print("Angle: "+str(abs_angle))
+        if min_z > delta: self._filtered = True
+        
+    def length_filter(self, length=1):
+        """
+        Filter based on the minimum total length of the shape.
+
+        Parameters
+        ----------
+        length : float, optional
+            Minimum length. The default is 1m.
+
+        """
+        
+        if self._filtered == False:
+            
+            # Calculate distances between all points
+            distances = cdist(self._xyz, self._xyz)
+            
+            # Maximum length of the shape
+            max_distance = np.max(distances)
+            
+            if max_distance < length: self._filtered = True
+            
+            print("Max length of the shape: "+str(max_distance))
     
     def rectangle_filter(self, treshold=3, visualisation=False):
         """
@@ -90,7 +165,7 @@ class shape_processing:
 
         Parameters
         ----------
-        treshold : integer, optional
+        treshold : float, optional
             Maximum angular deviation tolerated. The default is 3.
         visualisation : bool, optional
             If True, a plot of projected PCA points is created. The default is
@@ -118,7 +193,7 @@ class shape_processing:
                 plt.scatter(projected_points[:, 0], projected_points[:, 1])
                 plt.xlabel('1st principal component')
                 plt.ylabel('2nd principal component')
-                plt.title('Points projection after PCA '+self._filename)
+                plt.title('Points projection after PCA, file '+self._filename)
                 plt.show()
             
             # Calculate angular difference between the eigenvectors and the
@@ -132,20 +207,19 @@ class shape_processing:
             
             print('Angular deviation: '+str(angular_diff))
     
-    def stable_density_filter(self, treshold=0.04):
+    def stable_density_filter(self, treshold=0.025):
         """
         Filter based on the fact that, for a cylindrical shape, the density of
         points is less variable along the axis than for irregular shape.
 
         Parameters
         ----------
-        treshold : integer, optional
+        treshold : float, optional
             Maximum variance of the points projected onto the 2nd principal PCA
-            axis that is tolerated. The default is 0.04.
+            axis that is tolerated. The default is 0.025.
 
         """
-        
-        
+                
         if self._filtered == False:
             
             # Centre of mass of the points cloud
@@ -168,14 +242,15 @@ class shape_processing:
             
             print("Variance: "+str(variance))
     
-    def ellipticity_filter(self, treshold=0.97):
+    def ellipticity_filter(self, treshold=0.4):
         """
         Calculate shape ellipticity and applicate a filter based on a treshold.
+        WARNING: the results showed that this method unreliable.
 
         Parameters
         ----------
-        treshold : integer, optional
-            Minimum ellipticity value the shape must have. The default is 0.97.
+        treshold : float, optional
+            Minimum ellipticity value the shape must have. The default is 0.4.
 
         """
         
@@ -218,10 +293,11 @@ class shape_processing:
         """
         
         if self._filtered == False:
+            
             dest = folder+'/'+self._filename+'.txt'
             shutil.copy2(self._file, dest)
     
-    def las_points(self, header):
+    def las_points(self, header, label):
         """
         Convert ASCII file points into las points (PointRecord object) so that
         they can be added later to an existing las file. Keeping only xyz and
@@ -231,6 +307,9 @@ class shape_processing:
         ----------
         header : laspy.header.LasHeader
             Same header as the file to which the points will be written.
+        label : integer
+            Label that will be given to points classification field. It should
+            correspond to the filtered shape number.
 
         Returns
         -------
@@ -243,30 +322,10 @@ class shape_processing:
         point_record = laspy.ScaleAwarePointRecord.zeros(self._data.shape[0],
                                                          header=header)
         
-        #### Not working already!
-        coeff = 1000 # to avoid a strange scaling problem occuring during saving
-        
-        for field in self._data:
-            
-            # Not clean, but avoid problem of dimension compatibility
-            if field == '//X':
-                point_record['X'] = self._data[field]*coeff
-            
-            if field == 'Y':
-                point_record['Y'] = self._data[field]*coeff
-                
-            if field == 'Z':
-                point_record['Z'] = self._data[field]*coeff
-            
-            if field == "Classification":
-                point_record['classification'] = self._data[field]
-                
-            else:
-                try:
-                    point_record[field] = self._data[field]
-                
-                except Exception:
-                    pass # do nothing
+        point_record.x = self._data['//X']
+        point_record.y = self._data['Y']
+        point_record.z = self._data['Z']
+        point_record.classification = str(label)
                     
         return point_record
 
@@ -309,17 +368,34 @@ for folder in glob.glob(path_raw+'/*'):
         # Initialise new las file
         path_out = path_filtered+'/'+folder_name+ '_cyl_filtered.las'
         new_las = laspy.create(point_format=7, file_version="1.4")
+        new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
         new_las.write(path_out)
         
         # Browsing all .txt files
         for file in glob.glob(folder+'/*.txt'):
             
-            # Shape processing
+            ## Shape processing
+
             sh = shape_processing(file)
-            sh.orientation_filter(angle=60)
-            # sh.ellipticity_filter(treshold=0.4)
-            # sh.rectangle_filter(treshold=4, visualisation=True)
-            sh.stable_density_filter()
+            
+            # Filtering according to inclination to vertical axis
+            sh.inclination_filter()
+            
+            # Filtering "flying" branches
+            sh.flying_filter()
+            
+            # Filtering shapes outside the inventory plot
+            sh.distance_from_centre(plot_name=folder_name)
+            
+            # Filter based on the resemblance of the projection to a deformed
+            # rectangle
+            # sh.rectangle_filter()
+            
+            # Filtering according to the distribution of points along main axis
+            sh.stable_density_filter(treshold=0.01)
+            
+            # Filtering according to shape length
+            sh.length_filter()
             
             if sh._filtered == True :
                 print("Filtered. \n")
@@ -329,7 +405,7 @@ for folder in glob.glob(path_raw+'/*'):
                 remain += 1
                 
                 # Create las points
-                points = sh.las_points(header=new_las.header)
+                points = sh.las_points(header=new_las.header, label=remain)
                 
                 # Append las points to new file
                 with laspy.open(path_out, mode="a") as las_out:
