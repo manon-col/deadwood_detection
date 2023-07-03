@@ -12,7 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def save_plot(shape_file, path, figsize=(4,4)):
+def save_plot(shape_file, path, figsize):
     """
     Plot shape_file points with a color depending on the z-coordinate. Then,
     save the plot in a .png file with the same name in the specified path.
@@ -56,20 +56,30 @@ def save_plot(shape_file, path, figsize=(4,4)):
     # Save the figure as an image
     plt.savefig(path + '/' + filename + '.png', bbox_inches='tight',
                 pad_inches=0)
-
+    
     plt.close()
 
 
-def make_images(data_folder, img_folder):
+def image_generator(data_folder, img_folder, figsize = (4,4)):
     """
-    Create images from .txt files (stored in data_folder) in img_folder.
+    Create images from multiple .txt files (containing points of a 3D shape,
+    stored in data_folder) in img_folder.
     
+    Parameters
+    ----------
+    data_folder : string
+        Path of folder containing all shape files (.txt ascii cloud data).
+    img_folder : string
+        Where to save the figures.
+    figsize : tuple, optional
+        Figure size in inches. The default is (4,4)
     """
+    # Create destination folder if needed
+    if not os.path.exists(img_folder): os.makedirs(img_folder)
+    
     # Create images if they do not already exist
-    if not os.path.exists(img_folder) :
-    
-        os.makedirs(img_folder) # creating destination folder
-           
-        # Browse all shape files (.txt ascii cloud data)
+    if len(os.listdir(img_folder)) == 0:
+        
+        # Browse all shape files
         for file in glob.glob(data_folder + '/*.txt'):
-            save_plot(shape_file=file, path=img_folder)
+            save_plot(shape_file=file, path=img_folder, figsize=figsize)
