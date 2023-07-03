@@ -14,7 +14,14 @@ clip_las <- function(las_file, radius) {
   filename <- tools::file_path_sans_ext(basename(las_file))
 
   # Retrieving coordinates of the centre sphere
+  
   line <- spheres_data[spheres_data$reference == filename, ]
+  
+  if (nrow(line) == 0) {
+    message("No match found in spheres file for reference '", filename, "'.")
+    return(NULL)
+  }
+  
   centre_x <- as.numeric(line$Xcentre)
   centre_y <- as.numeric(line$Ycentre)
   
@@ -31,16 +38,25 @@ clip_las <- function(las_file, radius) {
 }
 
 
-# Listing las files
+# List las files
 las_files <- list.files(path = "scans/", pattern = "\\.las$", full.names = TRUE)
+
+# Remove files ending with "_clip.las"
+las_files <- las_files[!grepl("_clip\\.las$", las_files)]
 
 # Clipping all las files
 for (las_file in las_files) {
   
   # Checking if the file isn't already clipped
-  expected_file <- paste(tools::file_path_sans_ext(basename(las_file)), "_clip.las", sep = "")
+  expected_file <- paste(tools::file_path_sans_ext(las_file), "_clip.las", sep = "")
   
   if (!file.exists(expected_file)) {
+    
+    print(paste("Clipping ", toString(las_file)))
     clip_las(las_file, radius = 22)
+    
+    # Remove from memory
+    gc()
+    print("Done!")
   }
 }
