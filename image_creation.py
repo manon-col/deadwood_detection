@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Create 2D figures from shape 3D cloud points.
+Create images from 3D point clouds for subsequent classification.
 
-@author: manon
+@author: manon-col
 """
 
 
@@ -12,11 +12,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def plot_PCA(shape_file, path, figsize=(4,4)):
+def save_plot(shape_file, path, figsize=(4,4)):
     """
-    Draw shape_file points with a color 
-    Project shape_file points onto the two main axes of the PCA. Then, save the
-    plot in a .png file with the same name in the specified path.
+    Plot shape_file points with a color depending on the z-coordinate. Then,
+    save the plot in a .png file with the same name in the specified path.
 
     Parameters
     ----------
@@ -25,7 +24,7 @@ def plot_PCA(shape_file, path, figsize=(4,4)):
     path : string
         Where to save the figure.
     figsize : tuple, optional
-        Figure size in inches. The default is (5,5).
+        Figure size in inches. The default is (4,4).
 
     """
     
@@ -61,22 +60,16 @@ def plot_PCA(shape_file, path, figsize=(4,4)):
     plt.close()
 
 
-# Path of folder with folders containing the files from which to create images
-path_raw = 'shapes_raw'
-
-# Path of folder containing image folders
-dataset_path = 'CNN_data'
-
-for folder in glob.glob(path_raw+'/*'):
+def make_images(data_folder, img_folder):
+    """
+    Create images from .txt files (stored in data_folder) in img_folder.
     
-    folder_name = os.path.splitext(os.path.basename(folder))[0]
-    dest = dataset_path + '/' + folder_name
-    
+    """
     # Create images if they do not already exist
-    if not os.path.exists(dest) :
-        
-        os.makedirs(dest) # creating destination folder
-        
+    if not os.path.exists(img_folder) :
+    
+        os.makedirs(img_folder) # creating destination folder
+           
         # Browse all shape files (.txt ascii cloud data)
-        for file in glob.glob(folder + '/*.txt'):
-            plot_PCA(shape_file=file, path=dest)
+        for file in glob.glob(data_folder + '/*.txt'):
+            save_plot(shape_file=file, path=img_folder)
