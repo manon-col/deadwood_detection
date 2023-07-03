@@ -34,7 +34,7 @@ class shape_processing:
     
     def __init__(self, file):
         
-        # File containing cylinder data
+        # File containing shape data
         self._file = file
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._file))[0]

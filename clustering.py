@@ -5,7 +5,6 @@
 
 
 import os
-import glob
 import laspy
 import random
 import numpy as np
@@ -14,19 +13,30 @@ from sklearn.cluster import DBSCAN
 from scipy.spatial.distance import cdist
 
 
-class deadwood_detection:
+class ClEngine:
     """
-    Methods for processing 3D point clouds obtained by LiDAR scanning, in order
-    to detect deadwood elements on the forest ground. Pre-processing must be
-    already performed : 3D cloud points must be filtered, as well as cleaned
-    from ground and tall vegetation points as far as possible.
+    Performs clustering on 3D point clouds obtained by LiDAR scanning to detect
+    deadwood elements on the forest ground.
+
+    This class focuses on the clustering step and assumes that pre-processing,
+    including filtering and cleaning of ground and tall vegetation points, has
+    already been performed.
+
+    Methods:
+    - __init__(self, las_file): Initialize the object and read the LAS file.
+    - DBSCAN_clustering(self, eps=0.05, min_samples=100): Perform euclidean
+    clustering using the DBSCAN algorithm.
+    - draw_clusters(self): Draw the clustering results.
+    - save_clusters(self): Save the clustering results in a new LAS file.
+    - filtering(self, nb_points=500, min_dist=1): Filter clusters based on a
+    minimum number of points and a minimum maximal length.
+    - reset_filtering(self): Reset the filtering status of all clusters.
     
     """
 
     def __init__(self, las_file):
         """
-        Initiate reading of the las file, extracting the x,y,z coordinates of
-        the points.
+        Initialize the object and read the LAS file.
         
         Parameters
         ----------
@@ -49,7 +59,7 @@ class deadwood_detection:
         
         print("File "+self._filename+".las loaded successfully.")
 
-    def clustering(self, eps=0.05, min_samples=100):
+    def DBSCAN_clustering(self, eps=0.05, min_samples=100):
         """
         An euclidian clustering operation of points of the las file, using the
         DBSCAN algorithm.
@@ -88,7 +98,7 @@ class deadwood_detection:
             cluster_points = self._data_xyz[self._labels == label]
             
             # Creating cluster object
-            self._clusters.append(cluster(label, cluster_points))
+            self._clusters.append(Cluster(label, cluster_points))
         
         print("Estimated number of clusters: %d" % n_clusters)
         print("Estimated number of noise points: %d" % n_noise)
@@ -243,7 +253,7 @@ class deadwood_detection:
             cluster.is_filtered(False)
 
 
-class cluster:
+class Cluster:
     """
     Manage a cluster of 3D points.
     
@@ -275,29 +285,3 @@ class cluster:
         if boolean == None: return(self._filtered)
         
         else: self._filtered = boolean
-
-
-# =============================================================================
-# Main program
-# =============================================================================
-
-
-# Listing all las files to cluster
-las_files = glob.glob('computree_outputs/*.las')
-
-# Listing clustered files
-clustered = glob.glob('cluster_outputs/*.las')
-clustered_names = [os.path.splitext(os.path.basename(file))[0] for file in\
-                   clustered]
-
-for file in las_files:
-    
-    # Checking if not already clustered
-    if os.path.splitext(os.path.basename(file))[0]+'_clusters' not in \
-    clustered_names:
-        
-        cl = deadwood_detection(file)
-        cl.clustering()
-        cl.filtering()
-        # cl.draw_clusters()
-        cl.save_clusters()
