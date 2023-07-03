@@ -8,6 +8,8 @@ Note: .las files are not visible in the repo because they are too large.
 #### Documentation:
 ``https://laspy.readthedocs.io/en/latest/index.html``\
 ``https://scikit-learn.org/stable/``\
+``https://www.tensorflow.org/install/pip?hl=fr``\
+``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``\
 \
 \
 Work in progress...
