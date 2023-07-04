@@ -3,7 +3,7 @@
 Simple program that converts all las files in the "to_convert" directory into
 point format 7 (to avoid errors with CloudCompare for ex). All converted files
 are saved in the "converted" directory. Files in the "converter" directory are
-not supposed to stay here forever.
+not supposed to stay here forever. Note that merger.py also converts las files.
 
 @author: manon-col
 """
