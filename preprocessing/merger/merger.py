@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Simple program that merges all las files in the "to_merge" directory, and saves
-the result in the "merged" directory. Files in the "merger" directory are not
-supposed to stay here forever.
+Simple program that converts all las files in the "to_merge" directory into
+point format 7, merges them, and saves the result in the "merged" directory.
+Files in the "merger" directory are not supposed to stay here forever.
 
 @author: manon-col
 """
@@ -20,6 +20,7 @@ for file in las_files:
     
     # Read las file
     las_in = laspy.read(file)
+    las_in = laspy.convert(las_in, point_format_id=7)
     
     if init == True:
         

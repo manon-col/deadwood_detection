@@ -1,1 +1,1 @@
-Place the las files to be merged here
+Place the las files to be merged here. Note that the merger also converts files.
