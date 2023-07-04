@@ -3,7 +3,7 @@ library(lidR)
 
 # Loading spheres coordinates
 spheres_file <- 'spheres_coordinates.csv'
-spheres_data <- read.csv2(spheres_file)
+spheres_data <- read.csv2(spheres_file, dec=",")
 
 
 clip_las <- function(las_file, radius) {
@@ -12,6 +12,7 @@ clip_las <- function(las_file, radius) {
 
   # Reference = filename without extension
   filename <- tools::file_path_sans_ext(basename(las_file))
+  print(paste("Clipping ", toString(filename), ".las"))
 
   # Retrieving coordinates of the centre sphere
   
@@ -52,7 +53,6 @@ for (las_file in las_files) {
   
   if (!file.exists(expected_file)) {
     
-    print(paste("Clipping ", toString(las_file)))
     clip_las(las_file, radius = 22)
     
     # Remove from memory
