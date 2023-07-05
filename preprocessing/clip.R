@@ -12,7 +12,7 @@ clip_las <- function(las_file, radius) {
 
   # Reference = filename without extension
   filename <- tools::file_path_sans_ext(basename(las_file))
-  print(paste("Clipping ", toString(filename), ".las"))
+  print(paste("Clipping ", toString(filename), ".las", sep=""))
 
   # Retrieving coordinates of the centre sphere
   
