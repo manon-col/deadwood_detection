@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """
+Program for clustering points from a LAS file.
+
 @author: manon-col
 """
 
@@ -44,6 +46,9 @@ class ClEngine:
             File containing the points to process.
             
         """
+        if not las_file.lower().endswith('.las'):
+            raise ValueError("The file must have the .las extension.")
+        
         # File
         self._las_file = las_file
         # File reading
