@@ -215,14 +215,14 @@ class ClEngine:
                     n+=1
                 
                 # Filtering clusters that have above nb_points
-                elif len(cluster.get_points()) < nb_points:
+                elif nb_points!=None and len(cluster.get_points()) < nb_points:
                     
                     cluster.is_filtered(True)
                     n+=1
                 
                 # Filtering clusters that have a length < min_dist
-                else:
-                                        
+                elif min_dist != None:
+                    
                     try:
                         
                         # Getting cluster points
