@@ -12,7 +12,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-def save_plot(shape_file, path, figsize):
+def save_plot(shape_file, path, figsize, dpi):
     """
     Plot shape_file points with a color depending on the z-coordinate. Then,
     save the plot in a .png file with the same name in the specified path.
@@ -24,7 +24,9 @@ def save_plot(shape_file, path, figsize):
     path : string
         Where to save the figure.
     figsize : tuple, optional
-        Figure size in inches. The default is (4,4).
+        Figure size in inches.
+    dpi : integer
+        Dots per inch.
 
     """
     
@@ -39,7 +41,7 @@ def save_plot(shape_file, path, figsize):
     z = coords[:,2]
     
     # Create figure
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111, projection='3d')
     
     # Create a color gradient based on z-values
@@ -54,13 +56,12 @@ def save_plot(shape_file, path, figsize):
     ax.set_axis_off()
     
     # Save the figure as an image
-    plt.savefig(path + '/' + filename + '.png', bbox_inches='tight',
-                pad_inches=0)
+    plt.savefig(path + '/' + filename + '.png', figsize=figsize, dpi=dpi)
     
     plt.close()
 
 
-def image_generator(data_folder, img_folder, figsize = (4,4)):
+def image_generator(data_folder, img_folder, figsize = (4,4), dpi=75):
     """
     Create images from multiple .txt files (containing points of a 3D shape,
     stored in data_folder) in img_folder.
@@ -73,6 +74,8 @@ def image_generator(data_folder, img_folder, figsize = (4,4)):
         Where to save the figures.
     figsize : tuple, optional
         Figure size in inches. The default is (4,4)
+    dpi : integer
+        Dots per inch. The default is 75.
     """
     # Create destination folder if needed
     if not os.path.exists(img_folder): os.makedirs(img_folder)
@@ -84,4 +87,5 @@ def image_generator(data_folder, img_folder, figsize = (4,4)):
         
         # Browse all shape files
         for file in glob.glob(data_folder + '/*.txt'):
-            save_plot(shape_file=file, path=img_folder, figsize=figsize)
+            save_plot(shape_file=file, path=img_folder, figsize=figsize,
+                      dpi=dpi)
