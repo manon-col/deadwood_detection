@@ -8,27 +8,36 @@ import os
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras import utils
 
 
 image_size = (217, 217)
 
-train_path = 'CNN_data/model_data'
-deadwood_path = train_path + '/deadwood'
-other_path = train_path + '/other'
-unlabelled_path = train_path + '/unlabelled'
-test_path = 'CNN_data/model_data'
+# train_path = 'NNCLR_data/train_data'
+# unlabelled = train_path + '/unlabelled'
+# labelled = train_path + '/labelled'
+# deadwood_train = labelled + '/deadwood'
+# other_train = labelled + '/other'
+# test_path = 'NNCLR_data/test_data'
+# deadwood_test = test_path + '/deadwood'
+# other_test = test_path + '/other'
+labelled = 'NNCLR_data/labelled'
+unlabelled = "NNCLR_data/unlabelled"
 
 
 # =============================================================================
 # Hyperparameters
 # =============================================================================
 
+
 AUTOTUNE = tf.data.AUTOTUNE
 shuffle_buffer = 5000
 
-labelled_train_images = len([file for file in os.listdir(deadwood_path)]) + \
-    len([file for file in os.listdir(other_path)])
-unlabelled_images = len([file for file in os.listdir(unlabelled_path)])
+labelled_train_images = len([file for file in os.listdir(labelled+'/deadwood')]) + \
+    len([file for file in os.listdir(labelled+'/other')])
+unlabelled_images = len([file for file in os.listdir(unlabelled)])
+
+
 
 temperature = 0.1
 queue_size = 10000
@@ -45,42 +54,66 @@ classification_augmenter = {
 input_shape = (image_size[0], image_size[1], 3)
 width = 128
 num_epochs = 25
-steps_per_epoch = 200
+steps_per_epoch = 2
+
+
+# =============================================================================
+# Dataset preparation
+# =============================================================================
 
 
 def prepare_dataset():
+   
     
     unlabelled_batch_size = unlabelled_images // steps_per_epoch
     labelled_batch_size = labelled_train_images // steps_per_epoch
     batch_size = unlabelled_batch_size + labelled_batch_size
     
-    unlabeled_batch_size = unlabelled_images // steps_per_epoch
-    labeled_batch_size = labelled_train_images // steps_per_epoch
-    batch_size = unlabeled_batch_size + labeled_batch_size
-
-    unlabelled_train_dataset = (
-        tf.data.Dataset.list_files(unlabelled_path)
-        .shuffle(buffer_size=shuffle_buffer)
-        .batch(unlabelled_batch_size, drop_remainder=True)
-    )
-    labelled_train_dataset = (
-        tf.data.Dataset.list_files(deadwood_path)
-        .concatenate(tf.data.Dataset.list_files(other_path))
+    labelled_train_ds = (utils.image_dataset_from_directory(
+        labelled,
+        validation_split=0.2,
+        subset="training",
+        seed=42,
+        image_size=image_size,
+        )
         .shuffle(buffer_size=shuffle_buffer)
         .batch(labelled_batch_size, drop_remainder=True)
     )
-    test_dataset = (
-        tf.data.Dataset.list_files(test_path)
+
+    val_ds = (utils.image_dataset_from_directory(
+        labelled,
+        validation_split=0.2,
+        subset="validation",
+        seed=42,
+        image_size=image_size,
+        )
         .batch(batch_size)
         .prefetch(buffer_size=AUTOTUNE)
     )
-    train_dataset = tf.data.Dataset.zip(
-        (unlabelled_train_dataset, unlabelled_train_dataset)
+    
+    unlabelled_train_ds = (utils.image_dataset_from_directory(
+        unlabelled,
+        label_mode=None,
+        seed=42,
+        image_size=image_size,
+        )
+        .shuffle(buffer_size=shuffle_buffer)
+        .batch(unlabelled_batch_size, drop_remainder=True)
+    )
+    
+    train_ds = tf.data.Dataset.zip(
+        (unlabelled_train_ds, labelled_train_ds)
     ).prefetch(buffer_size=AUTOTUNE)
+    
+    return batch_size, train_ds, labelled_train_ds, val_ds
 
-    return batch_size, train_dataset, labelled_train_dataset, test_dataset
+batch_size, train_ds, labelled_train_ds, val_ds = prepare_dataset()
 
-batch_size, train_dataset, labeled_train_dataset, test_dataset = prepare_dataset()
+
+# =============================================================================
+# Augmentations
+# =============================================================================
+
 
 class RandomResizedCrop(layers.Layer):
     
@@ -118,7 +151,6 @@ class RandomResizedCrop(layers.Layer):
             images, bounding_boxes, tf.range(batch_size), (height, width)
         )
         return images
-
 
 class RandomBrightness(layers.Layer):
     
@@ -158,7 +190,6 @@ def augmenter(brightness, name, scale):
         name=name,
     )
 
-
 def encoder():
     return keras.Sequential(
         [
@@ -172,6 +203,11 @@ def encoder():
         ],
         name="encoder",
     )
+
+
+# =============================================================================
+# NNCLR model for contrastive pre-training
+# =============================================================================
 
 
 class NNCLR(keras.Model):
@@ -316,10 +352,18 @@ class NNCLR(keras.Model):
 
     def train_step(self, data):
         
-        (unlabeled_images, _), (labeled_images, labels) = data
-        images = tf.concat((unlabeled_images, labeled_images), axis=0)
-        augmented_images_1 = self.contrastive_augmenter(images)
-        augmented_images_2 = self.contrastive_augmenter(images)
+        unlabelled_images, labelled_images = data
+
+        unlabelled_images = tf.cast(unlabelled_images, tf.float32)
+        labelled_images = tf.cast(labelled_images, tf.float32)
+    
+        augmented_images_1 = self.contrastive_augmenter(unlabelled_images)
+        augmented_images_2 = self.contrastive_augmenter(unlabelled_images)
+
+        # (unlabelled_images, _), (labelled_images, labels) = data
+        # images = tf.concat((unlabelled_images, labelled_images), axis=0)
+        # augmented_images_1 = self.contrastive_augmenter(images)
+        # augmented_images_2 = self.contrastive_augmenter(images)
 
         with tf.GradientTape() as tape:
             features_1 = self.encoder(augmented_images_1)
@@ -339,7 +383,7 @@ class NNCLR(keras.Model):
         )
         self.update_contrastive_accuracy(features_1, features_2)
         self.update_correlation_accuracy(features_1, features_2)
-        preprocessed_images = self.classification_augmenter(labeled_images)
+        preprocessed_images = self.classification_augmenter(labelled_images)
 
         with tf.GradientTape() as tape:
             features = self.encoder(preprocessed_images)
@@ -360,10 +404,10 @@ class NNCLR(keras.Model):
         }
 
     def test_step(self, data):
-        labeled_images, labels = data
+        labelled_images, labels = data
 
         preprocessed_images = self.classification_augmenter(
-            labeled_images, training=False
+            labelled_images, training=False
         )
         features = self.encoder(preprocessed_images, training=False)
         class_logits = self.linear_probe(features, training=False)
@@ -373,14 +417,25 @@ class NNCLR(keras.Model):
         return {"p_loss": probe_loss, "p_acc": self.probe_accuracy.result()}
 
 
+# =============================================================================
+# NNCLR pre-training
+# =============================================================================
+
+
 model = NNCLR(temperature=temperature, queue_size=queue_size)
 model.compile(
     contrastive_optimizer=keras.optimizers.Adam(),
     probe_optimizer=keras.optimizers.Adam(),
 )
 pretrain_history = model.fit(
-    train_dataset, epochs=num_epochs, validation_data=test_dataset
+    train_ds, epochs=num_epochs, validation_data=val_ds
 )
+
+
+# =============================================================================
+# Model evaluation
+# =============================================================================
+
 
 finetuning_model = keras.Sequential(
     [
@@ -398,5 +453,5 @@ finetuning_model.compile(
 )
 
 finetuning_history = finetuning_model.fit(
-    labeled_train_dataset, epochs=num_epochs, validation_data=test_dataset
+    labelled_train_ds, epochs=num_epochs, validation_data=val_ds
 )
