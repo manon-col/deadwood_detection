@@ -80,6 +80,8 @@ def image_generator(data_folder, img_folder, figsize = (4,4)):
     # Create images if they do not already exist
     if len(os.listdir(img_folder)) == 0:
         
+        print(f"Creating images in {img_folder}")
+        
         # Browse all shape files
         for file in glob.glob(data_folder + '/*.txt'):
             save_plot(shape_file=file, path=img_folder, figsize=figsize)
