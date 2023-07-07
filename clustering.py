@@ -181,7 +181,7 @@ class ClEngine:
             new_las.write('cluster_outputs/'+self._filename+'_clusters.las')
             
             print("Clustering results successfully saved in "+self._filename+
-                  "_clusters.las")
+                  "_clusters.las \n")
         
         else: print("Please run the clustering method first.")
         
@@ -193,10 +193,12 @@ class ClEngine:
         Parameters
         ----------
         nb_points : integer, optional
-            Minimum number of points a cluster must contain. The default is 500.
+            Minimum number of points a cluster must contain. Set to None to
+            ignore point density filtering. The default is 500.
         min_dist: integer, optional
             Minimum distance that the 2 furthest points of the cluster must be
-            from each other. The default is 1m.
+            from each other. Set to None to ignore length filtering. The
+            default is 1m.
             
         """
         
