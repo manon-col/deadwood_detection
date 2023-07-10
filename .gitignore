@@ -4,6 +4,5 @@
 scans/.Rhistory
 .Rhistory
 __pycache__/clustering.cpython-39.pyc
-*.png
 .ipynb_checkpoints/main-checkpoint.ipynb
 *.pyc
