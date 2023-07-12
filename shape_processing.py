@@ -1,23 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Program filtering detected cylinders (for example: cloud ASCII files exported
-from CloudCompare) according to their orientation. Cylinders detected in each
-plot are in the "cylinders_raw" folder and outputs are in the
-"cylinders_filtered" folder.
+Program designed to filter cylindrical shapes (point cloud in .txt format such
+as ascii cloud exported from CloudCompare) according to various statistical
+criteria.
 
 @author: manon-col
 """
 
 
 import os
-import glob
 import laspy
 import shutil
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from pyntcloud import PyntCloud
-# from scipy.spatial import ConvexHull
 from sklearn.decomposition import PCA
 from scipy.spatial.distance import cdist
 from sklearn.covariance import MinCovDet
@@ -32,7 +28,7 @@ class shape_processing:
     
     """
     
-    def __init__(self, file):
+    def __init__(self, file, verbose=False):
         
         # File containing shape data
         self._file = file
@@ -45,7 +41,20 @@ class shape_processing:
         # Filtering state
         self._filtered = False
         
-        print("File "+self._filename+".txt loaded successfully.")
+        self._verbose = verbose
+        
+        if self._verbose:
+            print("File "+self._filename+".txt loaded successfully.")
+    
+    def is_filtered(self):
+        """
+        Return the shape filtering state (boolean).
+
+        """
+        
+        if self._verbose: print("Filtering status of "+self._filename+".txt: "\
+                                +self._filtered)
+        return self._filtered
     
     def inclination_filter(self, angle=45):
         """
@@ -82,19 +91,26 @@ class shape_processing:
             abs_angle = abs(adjusted_angle)
             if abs_angle < angle: self._filtered = True
             
-            print("Angle: "+str(abs_angle))       
+            if self._verbose: print("Angle: "+str(abs_angle))       
     
-    def distance_from_centre(self, plot_name, distance=18):
+    def distance_from_centre(self, plot_name, coord_file, sep=';', dec=',',
+                             distance=18):
         """
         Check whether most of the object is located within a circle of radius
-        "distance" from the centre of the plot. The centre coordinates are in
-        the file "spheres_coordinates.csv".
+        "distance" from the centre of the plot. The centre coordinates must be
+        in coord_file (infos needed: reference, Xcentre, Ycentre).
         
         Parameters
         ----------
         plot_name : string
-            Plot reference, has to be the same as in the sphere_coordinates
-            file.
+            Plot reference, has to be the same as in coord_file.
+        coord_file : string
+            Path leading to the csv file that contains coordinates of the plot
+            centre.
+        sep : string, optional
+            Seperator of the csv file. The default is ';'.
+        dec : string, optional
+            Decimal separator of the csv file. The default is ','.
         distance : integer, optional
             Actual radius of the inventory plot. The default is 18m.
         
@@ -105,24 +121,27 @@ class shape_processing:
             # Get xy coordinates only
             points_xy = self._xyz[:, :2]
             
-            df = pd.read_csv('spheres_coordinates.csv', sep=';')
+            df = pd.read_csv(coord_file, sep=sep, decimal=dec)
+            
+            # Get centre coordinates
             centre_xy = np.array(df.loc[df['reference'] == plot_name,
                                      ['Xcentre', 'Ycentre']])
-                        
+            
             # Calculate euclidean distances between each point and the centre
             distances = cdist(points_xy, centre_xy, 'euclidean')[0]
             
             # Calculate the percentage of points within 18m of the centre
-            percentage = np.mean(distances < 18) * 100
+            percentage = np.mean(distances < distance) * 100
             
             if percentage < 50: self._filtered = True
             
-            print("Percentage of points in the plot: "+str(percentage))
+            if self._verbose:
+                print("Percentage of points in the plot: "+str(percentage))
     
     def flying_filter(self, delta = 0.05):
         """
         Filter "flying" branches whose lowest point is more than delta metres
-        from the ground. Works better if the points have an altitude of 0...
+        from the ground.
         
         Parameters
         ----------
@@ -134,7 +153,11 @@ class shape_processing:
         # Lowest z-value
         min_z = np.min(self._xyz[:, 2])
         
-        if min_z > delta: self._filtered = True
+        if min_z > delta:
+            
+            self._filtered = True
+        
+            if self._verbose: print("Too high above the ground.")
         
     def length_filter(self, length=1):
         """
@@ -157,7 +180,8 @@ class shape_processing:
             
             if max_distance < length: self._filtered = True
             
-            print("Max length of the shape: "+str(max_distance))
+            if self._verbose: print("Max length of the shape: "+ \
+                                    str(max_distance))
     
     def rectangle_filter(self, treshold=3, visualisation=False):
         """
@@ -205,7 +229,7 @@ class shape_processing:
             # Checking if a deformed rectangle is detected
             if angular_diff > treshold: self._filtered = True
             
-            print('Angular deviation: '+str(angular_diff))
+            if self._verbose: print('Angular deviation: '+str(angular_diff))
     
     def stable_density_filter(self, treshold=0.025):
         """
@@ -240,7 +264,7 @@ class shape_processing:
             
             if variance > treshold: self._filtered = True
             
-            print("Variance: "+str(variance))
+            if self._verbose: print("Variance: "+str(variance))
     
     def ellipticity_filter(self, treshold=0.4):
         """
@@ -269,7 +293,8 @@ class shape_processing:
             
             covariance_estimator = MinCovDet()
             covariance_estimator.fit(scaled_points)
-            covariance_matrix = scaler.inverse_transform(covariance_estimator.covariance_)
+            covariance_matrix = \
+                scaler.inverse_transform(covariance_estimator.covariance_)
             _, eigenvalues, _ = np.linalg.svd(covariance_matrix)
             major_axis = np.sqrt(eigenvalues[0])
             minor_axis = np.sqrt(eigenvalues[1])
@@ -278,7 +303,7 @@ class shape_processing:
             # Filtering
             if ellipticity < treshold: self._filtered = True
                     
-            print("Ellipticity: "+str(ellipticity))
+            if self._verbose: print("Ellipticity: "+str(ellipticity))
     
     def save(self, folder):
         """
@@ -288,7 +313,7 @@ class shape_processing:
         Parameters
         ----------
         folder : path
-            Path of the folder where the concerned files are.
+            Path of the folder where the saved files are.
             
         """
         
@@ -328,90 +353,3 @@ class shape_processing:
         point_record.classification = str(label)
                     
         return point_record
-
-
-def compute_volume(file):
-        
-    shape = PyntCloud.from_file(file, delimiter=' ', header=0, names=["x","y","z"])
-    shape.plot()
-    convex_hull_id = shape.add_structure("convex_hull")
-    convex_hull = shape.structures[convex_hull_id]
-    volume = convex_hull.volume
-    print(volume)
-    return(volume)
-
-
-# =============================================================================
-# Main program
-# =============================================================================
-
-
-path_raw = 'shapes_raw' # path with all raw shapes in different folders/plot
-path_filtered = 'shapes_filtered' # results location
-filtered = glob.glob(path_filtered+'/*.las')
-filtered_names = [os.path.splitext(os.path.basename(file))[0] for file in\
-                  filtered]
-
-# Browse all folders with shapes to process
-for folder in glob.glob(path_raw+'/*'):
-    
-    folder_name = os.path.splitext(os.path.basename(folder))[0]
-    
-    # Check if processing is not already done
-    if os.path.splitext(os.path.basename(folder))[0]+'_cyl_filtered' not in \
-        filtered_names:
-        
-        # Initialise counters...
-        total = 0 # of total number of processed shapes
-        remain = 0 # of unfiltered = remaining shapes
-        
-        # Initialise new las file
-        path_out = path_filtered+'/'+folder_name+ '_cyl_filtered.las'
-        new_las = laspy.create(point_format=7, file_version="1.4")
-        new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
-        new_las.write(path_out)
-        
-        # Browsing all .txt files
-        for file in glob.glob(folder+'/*.txt'):
-            
-            ## Shape processing
-
-            sh = shape_processing(file)
-            
-            # Filtering according to inclination to vertical axis
-            sh.inclination_filter()
-            
-            # Filtering "flying" branches
-            sh.flying_filter()
-            
-            # Filtering shapes outside the inventory plot
-            sh.distance_from_centre(plot_name=folder_name)
-            
-            # Filter based on the resemblance of the projection to a deformed
-            # rectangle
-            # sh.rectangle_filter()
-            
-            # Filtering according to the distribution of points along main axis
-            sh.stable_density_filter(treshold=0.01)
-            
-            # Filtering according to shape length
-            sh.length_filter()
-            
-            if sh._filtered == True :
-                print("Filtered. \n")
-                
-            else:
-                print("Unfiltered. \n")
-                remain += 1
-                
-                # Create las points
-                points = sh.las_points(header=new_las.header, label=remain)
-                
-                # Append las points to new file
-                with laspy.open(path_out, mode="a") as las_out:
-                    las_out.append_points(points)
-            
-            total += 1
-            
-        print("Done!\n"+str(remain)+" shapes remaining out of "+str(total)\
-              +".")
