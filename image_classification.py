@@ -4,7 +4,6 @@
 @author: manon-col
 """
 
-import os
 import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
@@ -91,6 +90,8 @@ class Model:
     
     def pretraining(self):
         
+        print("Building NNCLR model.")
+        
         self._model = NNCLR(temperature=self._temperature,
                             queue_size=self._queue_size,
                             width=self._width,
@@ -116,7 +117,7 @@ class Model:
         
         self.plot_history(pretrain_history, "Pretraining History")
     
-    def finetuning(self):
+    def finetuning(self, save_path):
         
         finetuning_model = keras.Sequential(
             [
@@ -148,6 +149,15 @@ class Model:
         )
         
         self.plot_history(finetuning_history, "Finetuning History")
+        
+        finetuning_model.save(
+            filepath=save_path,
+            overwrite=True,
+            save_format=None,
+            options=None,
+            include_optimizer=True,
+            signatures=None
+        )
     
     def plot_history(self, history, title):
         
@@ -196,9 +206,46 @@ class Model:
         plt.suptitle(title)
         plt.show()
     
-    def save_weights(self):
-        self._model.save_weights(self._model_path+'/model_weights.h5')
+    def load(self, filepath):
+        
+        self._model = tf.keras.models.load_model(filepath, compile=False)
+        
+        for layer in self._model.layers:
+            if not isinstance(layer, layers.Dense):
+                layer.trainable = False
+
+        self._model.compile(
+            optimizer=keras.optimizers.Adam(),
+            loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+            metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
+            )
+        
+        self._model.summary()
     
+    def _build_pm(self):
+        
+        self._probability_model = tf.keras.Sequential([self._model,
+                                                       layers.Softmax()])
+    
+    def prediction(self, image, treshold=None):
+        
+        if not hasattr(self, '_probability_model'):
+            self._build_pm()
+        
+        img = utils.load_img(image)
+        img_array = utils.img_to_array(img)
+        img_array = tf.expand_dims(img_array, 0)
+        predictions = self._probability_model.predict(img_array, verbose=0)
+        predicted_class = tf.argmax(predictions, axis=1).numpy()[0]
+        predicted_score = tf.reduce_max(predictions, axis=1).numpy()[0]
+        
+        if (treshold is not None and predicted_score < treshold and \
+            predicted_class == 1) or predicted_class == 0:
+            
+            return True
+        
+        return False
+        
 
 class RandomResizedCrop(layers.Layer):
     
@@ -335,13 +382,13 @@ class NNCLR(keras.Model):
             ),
             trainable=False,
         )
-
+        
     def compile(self, contrastive_optimizer, probe_optimizer, **kwargs):
         
         super().compile(**kwargs)
         self._contrastive_optimizer = contrastive_optimizer
         self._probe_optimizer = probe_optimizer
-
+    
     def nearest_neighbour(self, projections):
         
         support_similarities = tf.matmul(
@@ -505,42 +552,3 @@ class NNCLR(keras.Model):
 
         self._probe_accuracy.update_state(labels, class_logits)
         return {"p_loss": probe_loss, "p_acc": self._probe_accuracy.result()}
-
-
-class ModelPredictor:
-    
-    def __init__(self, model_path, image_size):
-        
-        weight_path = model_path + '/model_weights.h5'
-        
-        if not os.path.exists(weight_path):
-            raise ValueError(f"The weight file 'model_weights.h5' doesn't exist in {model_path}.")
-            
-        self.model_path = model_path
-        self.image_size = image_size
-        self.model = self._build_model()
-        self.model.load_weights(weight_path)
-
-    def _build_model(self):
-        
-        input_shape = (self.image_size[0], self.image_size[1], 3)
-        width = 128
-        
-        model = keras.Sequential(
-            [
-                layers.Input(shape=input_shape),
-                layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
-                layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
-                layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
-                layers.Conv2D(width, kernel_size=3, strides=2, activation="relu"),
-                layers.Flatten(),
-                layers.Dense(width, activation="relu"),
-            ],
-            name="encoder"
-        )
-        
-        return model
-
-    def predict(self, input_data):
-        
-        return self.model.predict(input_data)
