@@ -7,3 +7,6 @@ __pycache__/clustering.cpython-39.pyc
 *.png
 .ipynb_checkpoints/main-checkpoint.ipynb
 *.pyc
+*.data-00000-of-00001
+*.data-00000-of-00001
+*.index
