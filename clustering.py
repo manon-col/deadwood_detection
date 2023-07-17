@@ -126,7 +126,7 @@ class ClEngine:
 
         print("Estimated number of clusters: %d" % n_clusters)
         print("Estimated number of noise points: %d" % n_noise)
-
+    
     def draw_clusters(self):
         """
         Draw the clustering results (simply), with points in the same cluster
@@ -170,7 +170,17 @@ class ClEngine:
 
         # Showing the plot
         plt.show()
-
+        
+    def get_clusters(self):
+        """
+        Return the last created list of clusters.
+        
+        """
+        
+        if self._clusters: return self._clusters
+        elif self._raw_clusters: return self._raw_clusters
+        else: print("No cluster found.")
+    
     def filtering(self,
                   nb_points=500,
                   coord_file=None,
@@ -225,7 +235,7 @@ class ClEngine:
                 cluster.flying_filter(delta=delta)
                 cluster.length_filter(min_dist=min_dist)
 
-            self._make_clusters_list()
+            self._create_clusters_list()
 
             print(f"{len(self._clusters)} clusters remaining out of " +
                   f"{len(self._raw_clusters)}.")
@@ -247,7 +257,7 @@ class ClEngine:
             if cluster.get_label() in cluster_list: cluster.is_filtered(False)
             else: cluster.is_filtered(True)
         
-        self._make_clusters_list()
+        self._create_clusters_list()
     
     def reset_filtering(self):
         """
@@ -257,11 +267,11 @@ class ClEngine:
 
         for cluster in self._raw_clusters: cluster.is_filtered(False)
         
-        self._make_clusters_list()
+        self._create_clusters_list()
 
-    def _make_clusters_list(self):
+    def _create_clusters_list(self):
         """
-        Make the list of clusters to save (unfiltered clusters).
+        Create the list of clusters to save from unfiltered clusters.
 
         """
         # Empty list
@@ -276,11 +286,18 @@ class ClEngine:
             
             self._clusters[index].set_label(index+1)
 
-    def save_clusters_las(self, folder):
+    def save_clusters_las(self, folder, suffix):
         """
         Save the clustering results in a new las file, in the specified folder,
         with the cluster label in the 'cluster' field (filtered clusters are
         not saved).
+
+        Parameters
+        ----------
+        folder : string
+            Where to save the file.
+        suffix : string
+            Filename suffix before extension.
 
         """
 
@@ -289,7 +306,7 @@ class ClEngine:
         if self._raw_clusters or self._clusters:
 
             # Create new .las file
-            path_out = f'{folder}/{self._filename}_clusters.las'
+            path_out = f'{folder}/{self._filename}_{suffix}.las'
             new_las = laspy.create(point_format=7, file_version="1.4")
             # Adding a new field "cluster"
             new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
@@ -635,6 +652,7 @@ def cartesian_to_spherical(coordinates):
         Azimuth angle in radians.
     phi : float
         Polar angle in radians.
+        
     """
     x, y, z = coordinates
     r = np.linalg.norm(coordinates)
@@ -642,3 +660,21 @@ def cartesian_to_spherical(coordinates):
     phi = np.arccos(z / r)
 
     return r, theta, phi
+
+def label_from(image):
+    """
+    Return the cluster label from the cluster image.
+
+    Parameters
+    ----------
+    image : string
+        Image path.
+
+    """
+    # Filename
+    basename = os.path.basename(image)
+    
+    start_index = basename.find("_cluster_") + len("_cluster_")
+    end_index = basename.find(".png")
+    
+    return basename[start_index:end_index]
