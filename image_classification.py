@@ -4,6 +4,7 @@
 @author: manon-col
 """
 
+import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
@@ -227,24 +228,57 @@ class Model:
         self._probability_model = tf.keras.Sequential([self._model,
                                                        layers.Softmax()])
     
-    def prediction(self, image, treshold=None):
+    def prediction(self, images, threshold=None):
+        """
+        Realise image predictions in batch. Return class 0 images (deadwood)
+        and class 1 images with a confidence score < threshold.
+
+        Parameters
+        ----------
+        images : list
+            List of images to predict.
+        threshold : integer, optional
+            Minimum score of confidence tolerated for inclusion in the "other"
+            class (class 1). If score < threshold, it is The default is None.
+
+        Returns
+        -------
+        predictions : list
+            List of the input images classified as deadwood.
+
+        """
+        # Initialise array of all images
+        array = None
         
         if not hasattr(self, '_probability_model'):
             self._build_pm()
         
-        img = utils.load_img(image)
-        img_array = utils.img_to_array(img)
-        img_array = tf.expand_dims(img_array, 0)
-        predictions = self._probability_model.predict(img_array, verbose=0)
-        predicted_class = tf.argmax(predictions, axis=1).numpy()[0]
-        predicted_score = tf.reduce_max(predictions, axis=1).numpy()[0]
-        
-        if (treshold is not None and predicted_score < treshold and \
-            predicted_class == 1) or predicted_class == 0:
+        for image in images:
             
-            return True
+            img = utils.load_img(image)
+            img_array = utils.img_to_array(img)
+            img_array = tf.expand_dims(img_array, axis=0)
+            
+            if array is None: array = img_array
+            
+            else: array = np.concatenate((array, img_array), axis=0)
         
-        return False
+        # Initialise list of deadwood images
+        deadwood_images = []
+        
+        predictions = self._probability_model.predict(array,
+                                                      batch_size=len(array),
+                                                      verbose=0)   
+        
+        predicted_classes = tf.argmax(predictions, axis=1).numpy()
+        predicted_scores = tf.reduce_max(predictions, axis=1).numpy()
+        
+        for i in range(len(images)):
+            if predicted_classes[i] == 0 or (threshold is not None and \
+                                             predicted_scores[i] < threshold):
+                deadwood_images.append(images[i])
+    
+        return deadwood_images
         
 
 class RandomResizedCrop(layers.Layer):
