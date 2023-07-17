@@ -59,14 +59,28 @@ class ClEngine:
         self._data_xyz = self._las.xyz
         # Clustering results
         self._labels = None
-        # List of clusters
+        # List of raw clusters
+        self._raw_clusters = []
+        # List of clusters to save
         self._clusters = []
-        # List of unfiltered clusters = clusters to save
-        self._unfiltered = []
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
-
+        
         print(f"File {self._filename}.las loaded successfully.")
+        
+        try:
+            for cluster in range(len(np.unique(self._las['cluster']))):
+                
+                self._raw_clusters.append(
+                    Cluster(label=cluster,
+                            points=self._data_xyz[self._las.cluster==cluster]))
+                
+            self._clusters = self._raw_clusters            
+            
+            print(f"{len(self._clusters)} clusters found.")
+                
+        except AttributeError:
+            pass
 
     def DBSCAN_clustering(self, eps=0.05, min_samples=100):
         """
@@ -108,7 +122,7 @@ class ClEngine:
             cluster_points = self._data_xyz[self._labels == label]
 
             # Creating cluster object
-            self._clusters.append(Cluster(label, cluster_points))
+            self._raw_clusters.append(Cluster(label, cluster_points))
 
         print("Estimated number of clusters: %d" % n_clusters)
         print("Estimated number of noise points: %d" % n_noise)
@@ -122,41 +136,40 @@ class ClEngine:
 
         print("Drawing clusters...")
 
-        if self._clusters:
-
-            # Plotting clustering results
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-
-            for cluster in self._clusters:
-
-                if not (cluster.is_filtered()):
-
-                    # Cluster points of the same (randomly chosen) color
-                    random.seed(cluster.get_label())
-                    color = '#' + ''.join(random.choices('0123456789ABCDEF',
-                                                         k=6))
-
-                    # Get current cluster points
-                    cluster_points = cluster.get_points()
-
-                    # Draw cluster points
-                    ax.scatter(cluster_points[:, 0], cluster_points[:, 1],
-                               cluster_points[:, 2], c=color, marker='o')
-
-            # Axes and title
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
-            ax.set_zlabel('Z')
-            ax.set_title('Clustering results')
-
-            # Showing the plot
-            plt.show()
-
-            print("See plot.")
-
+        if self._clusters: to_draw = self._clusters
+        
+        elif self._raw_clusters: to_draw = self._raw_clusters
+        
         else:
             print("Please run the clustering method first.")
+            return
+
+        # Plotting clustering results
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        for cluster in to_draw:
+
+            # Cluster points of the same (randomly chosen) color
+            random.seed(cluster.get_label())
+            color = '#' + ''.join(random.choices('0123456789ABCDEF',
+                                                 k=6))
+
+            # Get current cluster points
+            cluster_points = cluster.get_points()
+
+            # Draw cluster points
+            ax.scatter(cluster_points[:, 0], cluster_points[:, 1],
+                       cluster_points[:, 2], c=color, marker='o')
+            
+        # Axes and title
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('Clustering results')
+
+        # Showing the plot
+        plt.show()
 
     def filtering(self,
                   nb_points=500,
@@ -167,8 +180,9 @@ class ClEngine:
                   delta=0.1,
                   min_dist=1):
         """
-        Basic cluster filter based on a minimum number of points and a minimum
-        maximal length.
+        Basic cluster filter based on a minimum number of points, a maximum
+        distance from plot centre, a maximum distance from the ground, and a
+        minimum length.
 
         Parameters
         ----------
@@ -197,9 +211,9 @@ class ClEngine:
 
         print("Filtering clusters...")
 
-        if self._clusters:
+        if self._raw_clusters:
 
-            for cluster in self._clusters:
+            for cluster in self._raw_clusters:
 
                 cluster.noise_filter()
                 cluster.nb_points_filter(nb_points=nb_points)
@@ -211,48 +225,68 @@ class ClEngine:
                 cluster.flying_filter(delta=delta)
                 cluster.length_filter(min_dist=min_dist)
 
-            self._make_unfiltered_list()
+            self._make_clusters_list()
 
-            print(f"{len(self._unfiltered)} clusters remaining out of " +
-                  f"{len(self._clusters)}.")
+            print(f"{len(self._clusters)} clusters remaining out of " +
+                  f"{len(self._raw_clusters)}.")
 
-        else:
-            print("Please run the clustering method first.")
+        else: print("Please run the clustering method first.")
+    
+    def keep_clusters(self, cluster_list):
+        """
+        Keep only clusters whose index is in cluster_list, filter the others.
 
+        Parameters
+        ----------
+        cluster_list : list
+            List of clusters to keep.
+            
+        """
+        for cluster in self._raw_clusters:
+            
+            if cluster.get_label() in cluster_list: cluster.is_filtered(False)
+            else: cluster.is_filtered(True)
+        
+        self._make_clusters_list()
+    
     def reset_filtering(self):
         """
         Set the status of all clusters to unfiltered.
 
         """
 
-        for cluster in self._clusters:
-            cluster.is_filtered(False)
+        for cluster in self._raw_clusters: cluster.is_filtered(False)
+        
+        self._make_clusters_list()
 
-    def _make_unfiltered_list(self):
+    def _make_clusters_list(self):
         """
-        Make the list of clusters to save.
+        Make the list of clusters to save (unfiltered clusters).
 
         """
-
-        for cluster in self._clusters:
-            if not cluster.is_filtered():
-                self._unfiltered.append(cluster)
+        # Empty list
+        self._clusters = []
+        
+        for cluster in self._raw_clusters:
+            
+            if not cluster.is_filtered(): self._clusters.append(cluster)
 
         # Relabel clusters
-        for index in range(len(self._unfiltered)):
-            self._unfiltered[index].set_label(index+1)
+        for index in range(len(self._clusters)):
+            
+            self._clusters[index].set_label(index+1)
 
     def save_clusters_las(self, folder):
         """
         Save the clustering results in a new las file, in the specified folder,
-        with the cluster label in the 'cluster' field (noise is in "0"
-        category).
+        with the cluster label in the 'cluster' field (filtered clusters are
+        not saved).
 
         """
 
         print("Saving unfiltered clusters in .las file...")
 
-        if self._clusters:
+        if self._raw_clusters or self._clusters:
 
             # Create new .las file
             path_out = f'{folder}/{self._filename}_clusters.las'
@@ -265,7 +299,7 @@ class ClEngine:
 
             # Filling the "cluster" field
 
-            for cluster in self._unfiltered:
+            for cluster in self._clusters:
 
                 points = cluster.las_points(header=new_las.header)
 
@@ -273,12 +307,12 @@ class ClEngine:
                 with laspy.open(path_out, mode="a") as las_out:
                     las_out.append_points(points)
 
-            if not self._unfiltered:
+            if not self._clusters:
 
                 print("Warning: clusters are not filtered, saving all " +
                       "clusters...")
 
-                for cluster in self._clusters:
+                for cluster in self._raw_clusters:
 
                     points = cluster.las_points(header=new_las.header)
 
@@ -307,11 +341,11 @@ class ClEngine:
 
         """
 
-        if self._unfiltered:
+        if self._clusters:
 
             print("Saving unfiltered clusters in .png files...")
 
-            for cluster in self._unfiltered:
+            for cluster in self._clusters:
 
                 save_path = f'{folder}/{self._filename}'
 
@@ -325,9 +359,8 @@ class ClEngine:
 
             print(f"Images successfully saved in {save_path}.")
 
-        else:
-            print("Please filter clusters first.")
-
+        else: print("Please filter clusters first.")
+    
 
 class Cluster:
     """
@@ -347,6 +380,10 @@ class Cluster:
     def __str__(self):
         return(f"Cluster {self._label}, {len(self._points)} points, filtering "
                + f"state: {self._filtered}")
+    
+    def __repr__(self):
+        return (f"Cluster(label={self._label}, num_points={len(self._points)},"
+                + f" filtering={self._filtered})")
 
     def get_label(self):
         return(self._label)
@@ -362,11 +399,9 @@ class Cluster:
 
         """
 
-        if boolean == None:
-            return(self._filtered)
+        if boolean == None: return(self._filtered)
 
-        else:
-            self._filtered = boolean
+        else: self._filtered = boolean
 
     def set_label(self, label):
         """
@@ -465,7 +500,7 @@ class Cluster:
 
     def noise_filter(self):
         """
-        Filter a cluster if it is noise.
+        Filter a cluster if it is noise (label 0).
 
         """
 
