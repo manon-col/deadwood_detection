@@ -19,23 +19,29 @@ from scipy.spatial.distance import cdist
 
 class ClEngine:
     """
-    Performs clustering on 3D point clouds obtained by LiDAR scanning to detect
-    deadwood elements on the forest ground.
-
-    This class focuses on the clustering step and assumes that pre-processing,
-    including filtering and cleaning of ground and tall vegetation points, has
-    already been performed.
-
+    Program for clustering points from a .las file, filtering, and managing
+    clustering outputs.
+    
+    This class performs clustering on 3D point clouds obtained by LiDAR
+    scanning to detect deadwood elements on the forest ground. It focuses on
+    the clustering step and assumes that pre-processing, including filtering
+    and cleaning of ground and tall vegetation points, has already been
+    performed.
+    
     Methods:
     - __init__(self, las_file): Initialize the object and read the LAS file.
     - DBSCAN_clustering(self, eps=0.05, min_samples=100): Perform euclidean
-    clustering using the DBSCAN algorithm.
+      clustering using the DBSCAN algorithm.
     - draw_clusters(self): Draw the clustering results.
-    - save_clusters(self): Save the clustering results in a new LAS file.
-    - filtering(self, nb_points=500, min_dist=1): Filter clusters based on a
-    minimum number of points and a minimum maximal length.
+    - save_clusters_las(self, folder, suffix): Save the clustering results in a
+      new LAS file.
+    - save_clusters_img(self, folder, figsize=(4, 4), dpi=75): Create and save
+      .png images from each cluster.
+    - filtering(self, nb_points=500, coord_file=None, sep=';', dec=',',
+      distance_from_centre=18, delta=0.1, min_dist=1): Filter clusters based on
+      various criteria.
     - reset_filtering(self): Reset the filtering status of all clusters.
-
+    
     """
 
     def __init__(self, las_file):
@@ -79,7 +85,7 @@ class ClEngine:
             
             print(f"{len(self._clusters)} clusters found.")
                 
-        except AttributeError:
+        except (AttributeError, ValueError):
             pass
 
     def DBSCAN_clustering(self, eps=0.05, min_samples=100):
