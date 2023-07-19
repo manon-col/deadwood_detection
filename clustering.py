@@ -193,7 +193,7 @@ class ClEngine:
                   sep=';',
                   dec=',',
                   distance_from_centre=18,
-                  delta=0.1,
+                  delta=0.5,
                   min_dist=1):
         """
         Basic cluster filter based on a minimum number of points, a maximum
@@ -217,7 +217,7 @@ class ClEngine:
         distance_from_centre : integer, optional
             Actual radius of the inventory plot. The default is 18m.
         delta : float, optional
-            Maximum distance from the ground. The default is 0.1m.    
+            Maximum distance from the ground. The default is 0.5m.    
         min_dist: integer, optional
             Minimum distance that the 2 furthest points of the cluster must be
             from each other. Set to None to ignore length filtering. The
@@ -228,16 +228,19 @@ class ClEngine:
         print("Filtering clusters...")
 
         if self._raw_clusters:
-
+            
+            # with np.errstate(invalid='ignore'):
+                
             for cluster in self._raw_clusters:
 
                 cluster.noise_filter()
                 cluster.nb_points_filter(nb_points=nb_points)
-                cluster.distance_from_centre_filter(plot_name=self._filename,
-                                                    distance=distance_from_centre,
-                                                    coord_file=coord_file,
-                                                    sep=sep,
-                                                    dec=dec)
+                cluster.distance_from_centre_filter(
+                    plot_name=self._filename,
+                    distance=distance_from_centre,
+                    coord_file=coord_file,
+                    sep=sep,
+                    dec=dec)
                 cluster.flying_filter(delta=delta)
                 cluster.length_filter(min_dist=min_dist)
 
@@ -582,13 +585,14 @@ class Cluster:
 
             # Calculate euclidean distances between each point and the centre
             distances = cdist(points_xy, centre_xy, 'euclidean')[0]
-
-            # Calculate the percentage of points within 18m of the centre
-            percentage = np.mean(distances < distance) * 100
-
-            if percentage < 50:
-                self.is_filtered(True)
-
+            
+            if len(distances) > 0: # avoiding errors with np.mean
+                
+                # Calculate the proportion of points within 18m of the centre
+                prop = np.mean(distances < distance)
+            
+                if prop < 0.5: self.is_filtered(True)
+    
     def flying_filter(self, delta=None):
         """
         Filter "flying" branches whose lowest point is more than delta metres
