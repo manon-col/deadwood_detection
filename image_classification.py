@@ -253,6 +253,8 @@ class Model:
         if not hasattr(self, '_probability_model'):
             self._build_pm()
         
+        print("Classifying images...")
+        
         for image in images:
             
             img = utils.load_img(image)
@@ -274,10 +276,13 @@ class Model:
         predicted_scores = tf.reduce_max(predictions, axis=1).numpy()
         
         for i in range(len(images)):
-            if predicted_classes[i] == 0 or (threshold is not None and \
-                                             predicted_scores[i] < threshold):
+            
+            if predicted_classes[i] == 0:
                 deadwood_images.append(images[i])
-    
+                
+            elif threshold is not None and predicted_scores[i] < threshold:
+                deadwood_images.append(images[i])
+        
         return deadwood_images
         
 
