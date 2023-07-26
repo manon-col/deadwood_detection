@@ -81,7 +81,7 @@ class ClEngine:
                     Cluster(label=cluster,
                             points=self._data_xyz[self._las.cluster==cluster]))
                 
-            self._clusters = self._raw_clusters            
+            self._clusters = self._raw_clusters
             
             print(f"{len(self._clusters)} clusters found.")
                 
@@ -258,9 +258,11 @@ class ClEngine:
         Parameters
         ----------
         cluster_list : list
-            List of clusters to keep.
+            List of clusters (cluster indexes/labels) to keep.
             
         """
+        cluster_list = [int(label) for label in cluster_list]
+        
         for cluster in self._raw_clusters:
             
             if cluster.get_label() in cluster_list: cluster.is_filtered(False)
@@ -311,7 +313,9 @@ class ClEngine:
         """
 
         print("Saving unfiltered clusters in .las file...")
-
+        
+        if not os.path.exists(folder): os.makedirs(folder)
+        
         if self._raw_clusters or self._clusters:
 
             # Create new .las file
@@ -345,11 +349,15 @@ class ClEngine:
                     # Append .las points to new file
                     with laspy.open(path_out, mode="a") as las_out:
                         las_out.append_points(points)
+                
+                print(f"{len(self._clusters)} clusters saved.")
+                
+                return
 
-            print(f"Clustering results successfully saved in {path_out}.")
+            print(f"{len(self._clusters)} clusters saved out of "+
+                  f"{len(self._raw_clusters)} in {path_out}.")
 
-        else:
-            print("Please run the clustering method first.")
+        else: print("Please run the clustering method first.")
 
     def save_clusters_img(self, folder, figsize=(4, 4), dpi=75):
         """
@@ -376,8 +384,7 @@ class ClEngine:
                 save_path = f'{folder}/{self._filename}'
 
                 # Create destination folder if needed
-                if not os.path.exists(save_path):
-                    os.makedirs(save_path)
+                if not os.path.exists(save_path): os.makedirs(save_path)
 
                 cluster.create_img(save_path=save_path,
                                    prefix=self._filename,
@@ -593,7 +600,7 @@ class Cluster:
             
                 if prop < 0.5: self.is_filtered(True)
     
-    def flying_filter(self, delta=None):
+    def flying_filter(self, delta):
         """
         Filter "flying" branches whose lowest point is more than delta metres
         from the ground.
@@ -619,30 +626,29 @@ class Cluster:
 
         Parameters
         ----------
-        min_dist: integer, optional
+        min_dist: integer
             Minimum distance that the 2 furthest points of the cluster must be
-            from each other. Set to None to ignore length filtering. The
-            default is 1m.
+            from each other. Set to None to ignore length filtering.
 
         """
 
-        if min_dist is not None and not self.is_filtered():
-
+        if min_dist is not None and not self.is_filtered() and \
+            len(self.get_points()) < 50000:  # avoid unnecessary calculations
+            
             try:
-
+                
                 # Calculate distances between all points
                 distances = cdist(self._points, self._points, 'euclidean')
 
                 # Maximum length of the shape
                 max_dist = np.max(distances)
-
+                
+                # Filter out clusters that are too small
                 if max_dist < min_dist:
                     self.is_filtered(True)
-
-            except MemoryError:
-
-                print("MemoryError: Skipping cluster due to " +
-                      "excessive memory usage.")
+            
+            except MemoryError: print("MemoryError: Skipping cluster due to " +
+                                      "excessive memory usage.")
 
 
 def cartesian_to_spherical(coordinates):
@@ -670,6 +676,7 @@ def cartesian_to_spherical(coordinates):
     phi = np.arccos(z / r)
 
     return r, theta, phi
+
 
 def label_from(image):
     """
