@@ -230,16 +230,18 @@ class Model:
     
     def prediction(self, images, threshold=None):
         """
-        Realise image predictions in batch. Return class 0 images (deadwood)
-        and class 1 images with a confidence score < threshold.
+        Realise image predictions in batch. The threshold allows flexibility
+        depending on the score value. Return a list of images classified as
+        "deadwood" (class 0).
 
         Parameters
         ----------
         images : list
             List of images to predict.
         threshold : integer, optional
-            Minimum score of confidence tolerated for inclusion in the "other"
-            class (class 1). If score < threshold, it is The default is None.
+            If set, images classified as "deadwood" with a score >= threshold
+            are evicted, while images classified as "other" with a score <
+            (threshold - 1) are kept. The default is None.
 
         Returns
         -------
@@ -277,11 +279,20 @@ class Model:
         
         for i in range(len(images)):
             
-            if predicted_classes[i] == 0:
-                deadwood_images.append(images[i])
+            if threshold is None:
                 
-            elif threshold is not None and predicted_scores[i] < threshold:
-                deadwood_images.append(images[i])
+                if predicted_classes[i] == 0:
+                    deadwood_images.append(images[i])
+            
+            else:
+                
+                if predicted_classes[i] == 1 and \
+                    predicted_scores[i] < (1-threshold):
+                    deadwood_images.append(images[i])
+                    
+                if predicted_classes[i] == 0 and \
+                    predicted_scores[i] >= threshold:
+                    deadwood_images.append(images[i])
         
         return deadwood_images
         
