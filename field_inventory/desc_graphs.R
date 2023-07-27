@@ -7,7 +7,7 @@ library(dplyr)
 # Load data
 data <- read.csv2("field_inventory.csv", dec=",")
 
-# Species
+# Species (unused)
 plot_species <- ggplot(data, aes(x=species)) +
   geom_bar(fill="#69b3a2", alpha=0.9, show.legend=TRUE) +
   labs(x = "Species", y = "Number of elements") +
@@ -20,7 +20,7 @@ plot_species <- ggplot(data, aes(x=species)) +
   scale_y_continuous(expand = c(0,0,0,2),
                      breaks = scales::pretty_breaks(n = 10))
 
-# Saproxylation stage (barplot)
+# Saproxylation stage, barplot (unused)
 plot_saprox <- ggplot(data, aes(x=stage_saproxylation)) +
   geom_bar(fill="#69b3a2", alpha=0.9, show.legend=FALSE) +
   labs(x = "Saproxylation stage", y = "Number of elements") +
@@ -37,10 +37,10 @@ plot_saprox <- ggplot(data, aes(x=stage_saproxylation)) +
 data$species <- factor(data$species)
 data$stage_saproxylation <- factor(data$stage_saproxylation)
 
-# Species and saproxylation stage (Stacked barplot)
+# Species and saproxylation stage, stacked barplot
 plot_spec_saprox <- ggplot(data, aes(x = species, fill = stage_saproxylation)) +
   geom_bar(position = "stack", alpha = 0.9) +
-  labs(x = "Species", y = "Number of elements") +
+  labs(x = "Species", y = "Number of elements", ) +
   theme_minimal() +
   theme(
     axis.line = element_line(size = 0.5, linetype = 1),
@@ -50,9 +50,10 @@ plot_spec_saprox <- ggplot(data, aes(x = species, fill = stage_saproxylation)) +
   ) +
   scale_y_continuous(expand = c(0, 0, 0, 2),
                      breaks = scales::pretty_breaks(n = 10)) +
-  scale_fill_viridis_d("Saproxylation stage")
+  scale_fill_viridis_d("Saproxylation
+stage")
 
-# Volume (histogram)
+# Volume, histogram (unused)
 plot_hist_vol <- ggplot(data, aes(x=volume_tot)) +
   geom_histogram(bins=100, fill="#69b3a2",
                  alpha=0.9, show.legend=FALSE) +
@@ -66,10 +67,10 @@ plot_hist_vol <- ggplot(data, aes(x=volume_tot)) +
   scale_y_continuous(expand = c(0,0,0,2),
                      breaks = scales::pretty_breaks(n = 10))
 
-# Volume (boxplot)
+# Volume, boxplot
 plot_box_vol <- ggplot(data, aes(species, volume_tot)) +
   geom_boxplot(aes(col=species), show.legend=FALSE) +
-  labs(x = "Species", y = "Volume (m³)") +
+  labs(x = "Species", y = "log10(volume)") +
   theme_minimal() +
   theme(axis.line = element_line(size = 0.5, linetype=1),
         panel.grid.major.x = element_blank(),
@@ -82,10 +83,17 @@ plot_box_vol <- ggplot(data, aes(species, volume_tot)) +
                      labels = label_number(scale = 10 ^ (1 / 3))) +
   scale_color_viridis_d()
 
-# Arrange the three plots side by side
-
-ggarrange(
+# Arrange 2 graphs together
+des <- ggarrange(
   plot_spec_saprox,
   plot_box_vol,
   nrow = 2
 )
+
+# Save plot
+ggsave(plot = des,
+       filename = "data_description.png",
+       height = 2000,
+       width = 1400,
+       units = "px",
+       bg = "white")
