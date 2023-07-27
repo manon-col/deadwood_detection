@@ -1,14 +1,9 @@
 
 *.laz
 *.las
-scans/.Rhistory
-.Rhistory
-__pycache__/clustering.cpython-39.pyc
-.ipynb_checkpoints/main-checkpoint.ipynb
+*.Rhistory
 *.pyc
-*.data-00000-of-00001
+.ipynb_checkpoints/main-checkpoint.ipynb
 *.data-00000-of-00001
 *.index
-*.index
-*.data-00000-of-00001
-field_inventory_measures/.Rhistory
+checkpoint
