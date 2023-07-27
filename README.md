@@ -3,7 +3,7 @@
 This study is carried out as part of a 2nd year agronomy engineering school internship (equivalent to M1).<br />
 Work in progress...<br />
 ![Current workflow](https://github.com/manon-col/deadwood_detection/edit/main/workflow.jpg?raw=true) <br /><br />
-The following python packages are needed. For tensorflow setup, please see documentation.<br />
+The following python packages are needed. For TensorFlow setup, please see documentation.<br />
 ```
 pip install laspy
 pip install pandas
@@ -15,7 +15,7 @@ Note: .las files are not visible in the repo because they are too large.<br /><b
 
 laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/latest/index.html``<br />
 scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
-Tensorflow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
+TensorFlow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
 Convolutional Neural Network with TensorFlow: ``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``<br />
 NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br /><br />
 
