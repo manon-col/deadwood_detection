@@ -8,13 +8,14 @@ clustering outputs.
 
 
 import os
+import time
 import laspy
 import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.cluster import DBSCAN
 from scipy.spatial.distance import cdist
+from sklearn.cluster import DBSCAN, HDBSCAN
 
 
 class ClEngine:
@@ -43,7 +44,7 @@ class ClEngine:
     - reset_filtering(self): Reset the filtering status of all clusters.
     
     """
-
+    
     def __init__(self, las_file):
         """
         Initialize the object and read the LAS file.
@@ -107,31 +108,338 @@ class ClEngine:
             itself. The default is 100.
 
         """
-
+        
         print(f"Clustering {self._filename}.las points...")
+        
+        start = time.time()
+        
+        # Run DBSCAN algorithm
+        clustering = DBSCAN(eps=eps,
+                            min_samples=min_samples)
+        clustering.fit(self._data_xyz)
 
-        # Running DBSCAN algorithm
-        clustering = DBSCAN(
-            eps=eps, min_samples=min_samples).fit(self._data_xyz)
+        # Clustering results
+        self._labels = clustering.labels_
 
-        # Clustering results, re-labelled to start from 0 instead of -1
-        self._labels = clustering.labels_+1
-
-        # Number of clusters in labels, ignoring noise (0) if present
+        # Number of clusters in labels, ignore noise (0) if present
         unique_labels = set(self._labels)
-        n_clusters = len(unique_labels) - (1 if 0 in self._labels else 0)
-        n_noise = list(self._labels).count(0)
 
         for label in unique_labels:
+            
+            # Ignore noise points
+            if label != -1:
+                
+                # Get current cluster points
+                cluster_points = self._data_xyz[self._labels == label]
+    
+                # Create cluster object
+                self._raw_clusters.append(
+                    Cluster(label+1, # 1st cluster = cluster 1 instead of 0
+                            cluster_points))
+        
+        end = time.time()
+        elapsed_time = self._timer(start, end)
+        
+        print("DBSCAN clustering done, estimated number of clusters: " +
+              f"{len(self._raw_clusters)}, elapsed time: " + elapsed_time)
+    
+    def HDBSCAN_clustering(self, min_cluster_size=500,
+                           min_samples=10):
+        """
+        Cluster data finely using hierarchical density-based clustering. The
+        data must already have been clustered by DBSCAN algorithm, as HDBSCAN
+        is used on each cluster (otherwise the processing time is too long).
+        
+        Parameters
+        ----------
+        min_cluster_size : integer, optional
+            The minimum number of samples in a group for that group to be
+            considered a cluster; groupings smaller than this size will be left
+            as noise. The default is 500.
+        min_samples : integer, optional
+            The number of samples in a neighborhood for a point to be
+            considered as a core point. This includes the point itself. The
+            default is 10.
+        
+        """
+        
+        if self._raw_clusters:
+            
+            cl_list = self._raw_clusters # copy of cluster list
+            self._raw_clusters = [] # re-initialise
+            
+            print("Performing HDBSCAN fine clustering...")
+            
+            start = time.time() 
+            
+            for index in range(1, len(cl_list)):
+                
+                cluster = cl_list[index]
+                
+                # Avoid unnecessary clustering of small clusters
+                if len(cluster.get_points()) > min_cluster_size:
+                    
+                    # Run HDBSCAN algorithm
+                    clustering = HDBSCAN(min_cluster_size=min_cluster_size,
+                                         min_samples=min_samples)
+                    points = cluster.get_points()
+                    clustering.fit(points)
+                    labels = clustering.labels_
+                    unique_labels = set(labels)
+                        
+                    for label in unique_labels:
+                        
+                        # Ignore noise points
+                        if label != -1:
+                            
+                            # Get current cluster points
+                            new_cluster_points = points[labels == label]
+                            
+                            # Create cluster object
+                            self._raw_clusters.append(
+                                Cluster(label=len(self._raw_clusters)+1,
+                                        points=new_cluster_points))
+            
+            end = time.time()
+            elapsed_time = self._timer(start, end)  
+            
+            print("HDBSCAN clustering done, estimated number of clusters: " +
+                  f"{len(self._raw_clusters)}, elapsed time: " + elapsed_time)
+        
+        else: print("Please run DBSCAN_clustering first.")
+        
+    def get_clusters(self):
+        """
+        Return the last created list of clusters.
+        
+        """
+        
+        if self._clusters: return self._clusters
+        elif self._raw_clusters: return self._raw_clusters
+        else: print("No cluster found.")
+    
+    def filtering(self,
+                  nb_points=None,
+                  coord_file=None,
+                  sep=';',
+                  dec=',',
+                  distance_from_centre=18,
+                  delta=0.5,
+                  min_dist=1):
+        """
+        Basic cluster filter based on a minimum number of points, a maximum
+        distance from plot centre, a maximum distance from the ground, and a
+        minimum length.
 
-            # Getting current cluster points
-            cluster_points = self._data_xyz[self._labels == label]
+        Parameters
+        ----------
 
-            # Creating cluster object
-            self._raw_clusters.append(Cluster(label, cluster_points))
+        nb_points : integer, optional
+            Minimum number of points a cluster must contain. Set to None to
+            ignore point density filtering. The default is None.
+        coord_file : string, optional
+            Path leading to the csv file that contains coordinates of the plot
+            centre. Set to None to ignore distance_from_centre filtering. The
+            default is None.
+        sep : string, optional
+            Seperator of the csv file. The default is ';'.
+        dec : string, optional
+            Decimal separator of the csv file. The default is ','.
+        distance_from_centre : integer, optional
+            Actual radius of the inventory plot. The default is 18m.
+        delta : float, optional
+            Maximum distance from the ground. The default is 0.5m.    
+        min_dist: integer, optional
+            Minimum distance that the 2 furthest points of the cluster must be
+            from each other. Set to None to ignore length filtering. The
+            default is 1m.
 
-        print("Estimated number of clusters: %d" % n_clusters)
-        print("Estimated number of noise points: %d" % n_noise)
+        """
+        
+        print("Filtering clusters...")
+
+        if self._raw_clusters:
+            
+            # with np.errstate(invalid='ignore'):
+                
+            for cluster in self._raw_clusters:
+
+                cluster.nb_points_filter(nb_points=nb_points)
+                cluster.distance_from_centre_filter(
+                    plot_name=self._filename,
+                    distance=distance_from_centre,
+                    coord_file=coord_file,
+                    sep=sep,
+                    dec=dec)
+                cluster.flying_filter(delta=delta)
+                cluster.length_filter(min_dist=min_dist)
+
+            self._create_clusters_list()
+
+            print(f"{len(self._clusters)} clusters remaining out of " +
+                  f"{len(self._raw_clusters)}.")
+
+        else: print("Please run the clustering method first.")
+    
+    def keep_clusters(self, cluster_list):
+        """
+        Keep only clusters whose index is in cluster_list, filter the others.
+
+        Parameters
+        ----------
+        cluster_list : list
+            List of clusters (cluster indexes/labels) to keep.
+            
+        """
+        
+        cluster_list = [int(label) for label in cluster_list]
+        
+        for cluster in self._raw_clusters:
+            
+            if cluster.get_label() in cluster_list: cluster.is_filtered(False)
+            else: cluster.is_filtered(True)
+        
+        self._create_clusters_list()
+    
+    def reset_filtering(self):
+        """
+        Set the status of all clusters to unfiltered.
+
+        """
+
+        for cluster in self._raw_clusters: cluster.is_filtered(False)
+        
+        self._create_clusters_list()
+
+    def _create_clusters_list(self):
+        """
+        Create the list of clusters to save from unfiltered clusters.
+
+        """
+        
+        # Empty list
+        self._clusters = []
+        
+        for cluster in self._raw_clusters:
+            
+            if not cluster.is_filtered(): self._clusters.append(cluster)
+
+        # Relabel clusters
+        for index in range(len(self._clusters)):
+            
+            self._clusters[index].set_label(index+1)
+
+    def save_clusters_las(self, folder, suffix):
+        """
+        Save the clustering results in a new las file, in the specified folder,
+        with the cluster label in the 'cluster' field (filtered clusters are
+        not saved).
+
+        Parameters
+        ----------
+        folder : string
+            Where to save the file.
+        suffix : string
+            Filename suffix before extension.
+
+        """
+
+        print("Saving unfiltered clusters in .las file...")
+        
+        if not os.path.exists(folder): os.makedirs(folder)
+        
+        if self._raw_clusters or self._clusters:
+
+            # Create new .las file
+            path_out = f'{folder}/{self._filename}_{suffix}.las'
+            new_las = laspy.create(point_format=7, file_version="1.4")
+            
+            # Add a new field "cluster"
+            new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
+                                                         type=np.uint32))
+            new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
+            new_las.write(path_out)
+
+            # Filling the "cluster" field
+
+            for cluster in self._clusters:
+
+                points = cluster.las_points(header=new_las.header)
+
+                # Append .las points to new file
+                with laspy.open(path_out, mode="a") as las_out:
+                    las_out.append_points(points)
+
+            if not self._clusters:
+
+                print("Warning: clusters are not filtered, saving all " +
+                      "clusters...")
+
+                for cluster in self._raw_clusters:
+
+                    points = cluster.las_points(header=new_las.header)
+
+                    # Append .las points to new file
+                    with laspy.open(path_out, mode="a") as las_out:
+                        las_out.append_points(points)
+                
+                print(f"{len(self._clusters)} clusters saved.")
+                
+                return
+
+            print(f"{len(self._clusters)} clusters successfully saved in "+
+                  f"{path_out}.")
+
+        else: print("Please run the clustering method first.")
+
+    def save_clusters_img(self, folder, figsize=(4, 4), dpi=75):
+        """
+        Create and save .png images from each cluster, in a sub-folder of the
+        specified directory.
+
+        Parameters
+        ----------
+        folder : string
+            Parent folder for cluster images.
+        figsize : tuple, optional
+            Figure size in inches. The default is (4,4).
+        dpi : integer, optional
+            Dots per inch. The default is 75.
+
+        """
+
+        if self._clusters:
+
+            print("Saving unfiltered clusters in .png files...")
+
+            for cluster in self._clusters:
+
+                save_path = f'{folder}/{self._filename}'
+
+                # Create destination folder if needed
+                if not os.path.exists(save_path): os.makedirs(save_path)
+
+                cluster.create_img(save_path=save_path,
+                                   prefix=self._filename,
+                                   figsize=figsize, dpi=dpi)
+
+            print(f"Images successfully saved in {save_path}.")
+
+        else: print("Please filter clusters first.")
+    
+    def _timer(self, start, end):
+        """
+        Give elapsed time between start and end (float time objects).
+        
+        """
+        
+        elapsed_seconds = int(end - start)
+    
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+    
+        return f"{hours}h{minutes}min{seconds}s"
     
     def draw_clusters(self):
         """
@@ -176,224 +484,7 @@ class ClEngine:
 
         # Showing the plot
         plt.show()
-        
-    def get_clusters(self):
-        """
-        Return the last created list of clusters.
-        
-        """
-        
-        if self._clusters: return self._clusters
-        elif self._raw_clusters: return self._raw_clusters
-        else: print("No cluster found.")
-    
-    def filtering(self,
-                  nb_points=500,
-                  coord_file=None,
-                  sep=';',
-                  dec=',',
-                  distance_from_centre=18,
-                  delta=0.5,
-                  min_dist=1):
-        """
-        Basic cluster filter based on a minimum number of points, a maximum
-        distance from plot centre, a maximum distance from the ground, and a
-        minimum length.
 
-        Parameters
-        ----------
-
-        nb_points : integer, optional
-            Minimum number of points a cluster must contain. Set to None to
-            ignore point density filtering. The default is 500.
-        coord_file : string, optional
-            Path leading to the csv file that contains coordinates of the plot
-            centre. Set to None to ignore distance_from_centre filtering. The
-            default is None.
-        sep : string, optional
-            Seperator of the csv file. The default is ';'.
-        dec : string, optional
-            Decimal separator of the csv file. The default is ','.
-        distance_from_centre : integer, optional
-            Actual radius of the inventory plot. The default is 18m.
-        delta : float, optional
-            Maximum distance from the ground. The default is 0.5m.    
-        min_dist: integer, optional
-            Minimum distance that the 2 furthest points of the cluster must be
-            from each other. Set to None to ignore length filtering. The
-            default is 1m.
-
-        """
-
-        print("Filtering clusters...")
-
-        if self._raw_clusters:
-            
-            # with np.errstate(invalid='ignore'):
-                
-            for cluster in self._raw_clusters:
-
-                cluster.noise_filter()
-                cluster.nb_points_filter(nb_points=nb_points)
-                cluster.distance_from_centre_filter(
-                    plot_name=self._filename,
-                    distance=distance_from_centre,
-                    coord_file=coord_file,
-                    sep=sep,
-                    dec=dec)
-                cluster.flying_filter(delta=delta)
-                cluster.length_filter(min_dist=min_dist)
-
-            self._create_clusters_list()
-
-            print(f"{len(self._clusters)} clusters remaining out of " +
-                  f"{len(self._raw_clusters)}.")
-
-        else: print("Please run the clustering method first.")
-    
-    def keep_clusters(self, cluster_list):
-        """
-        Keep only clusters whose index is in cluster_list, filter the others.
-
-        Parameters
-        ----------
-        cluster_list : list
-            List of clusters (cluster indexes/labels) to keep.
-            
-        """
-        cluster_list = [int(label) for label in cluster_list]
-        
-        for cluster in self._raw_clusters:
-            
-            if cluster.get_label() in cluster_list: cluster.is_filtered(False)
-            else: cluster.is_filtered(True)
-        
-        self._create_clusters_list()
-    
-    def reset_filtering(self):
-        """
-        Set the status of all clusters to unfiltered.
-
-        """
-
-        for cluster in self._raw_clusters: cluster.is_filtered(False)
-        
-        self._create_clusters_list()
-
-    def _create_clusters_list(self):
-        """
-        Create the list of clusters to save from unfiltered clusters.
-
-        """
-        # Empty list
-        self._clusters = []
-        
-        for cluster in self._raw_clusters:
-            
-            if not cluster.is_filtered(): self._clusters.append(cluster)
-
-        # Relabel clusters
-        for index in range(len(self._clusters)):
-            
-            self._clusters[index].set_label(index+1)
-
-    def save_clusters_las(self, folder, suffix):
-        """
-        Save the clustering results in a new las file, in the specified folder,
-        with the cluster label in the 'cluster' field (filtered clusters are
-        not saved).
-
-        Parameters
-        ----------
-        folder : string
-            Where to save the file.
-        suffix : string
-            Filename suffix before extension.
-
-        """
-
-        print("Saving unfiltered clusters in .las file...")
-        
-        if not os.path.exists(folder): os.makedirs(folder)
-        
-        if self._raw_clusters or self._clusters:
-
-            # Create new .las file
-            path_out = f'{folder}/{self._filename}_{suffix}.las'
-            new_las = laspy.create(point_format=7, file_version="1.4")
-            # Adding a new field "cluster"
-            new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
-                                                         type=np.uint32))
-            new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
-            new_las.write(path_out)
-
-            # Filling the "cluster" field
-
-            for cluster in self._clusters:
-
-                points = cluster.las_points(header=new_las.header)
-
-                # Append .las points to new file
-                with laspy.open(path_out, mode="a") as las_out:
-                    las_out.append_points(points)
-
-            if not self._clusters:
-
-                print("Warning: clusters are not filtered, saving all " +
-                      "clusters...")
-
-                for cluster in self._raw_clusters:
-
-                    points = cluster.las_points(header=new_las.header)
-
-                    # Append .las points to new file
-                    with laspy.open(path_out, mode="a") as las_out:
-                        las_out.append_points(points)
-                
-                print(f"{len(self._clusters)} clusters saved.")
-                
-                return
-
-            print(f"{len(self._clusters)} clusters saved out of "+
-                  f"{len(self._raw_clusters)} in {path_out}.")
-
-        else: print("Please run the clustering method first.")
-
-    def save_clusters_img(self, folder, figsize=(4, 4), dpi=75):
-        """
-        Create and save .png images from each cluster, in a sub-folder of the
-        specified directory.
-
-        Parameters
-        ----------
-        folder : string
-            Parent folder for cluster images.
-        figsize : tuple, optional
-            Figure size in inches. The default is (4,4).
-        dpi : integer, optional
-            Dots per inch. The default is 75.
-
-        """
-
-        if self._clusters:
-
-            print("Saving unfiltered clusters in .png files...")
-
-            for cluster in self._clusters:
-
-                save_path = f'{folder}/{self._filename}'
-
-                # Create destination folder if needed
-                if not os.path.exists(save_path): os.makedirs(save_path)
-
-                cluster.create_img(save_path=save_path,
-                                   prefix=self._filename,
-                                   figsize=figsize, dpi=dpi)
-
-            print(f"Images successfully saved in {save_path}.")
-
-        else: print("Please filter clusters first.")
-    
 
 class Cluster:
     """
@@ -519,7 +610,7 @@ class Cluster:
             Points compatible with las file.
 
         """
-
+        
         # Initialise point record
         point_record = laspy.ScaleAwarePointRecord.zeros(self._points.shape[0],
                                                          header=header)
@@ -530,15 +621,6 @@ class Cluster:
         point_record.cluster = str(self._label)
 
         return point_record
-
-    def noise_filter(self):
-        """
-        Filter a cluster if it is noise (label 0).
-
-        """
-
-        if self.get_label() == 0:
-            self.is_filtered(True)
 
     def nb_points_filter(self, nb_points):
         """
@@ -578,7 +660,7 @@ class Cluster:
             Decimal separator of the csv file.
 
         """
-
+        
         if coord_file is not None and not self.is_filtered():
 
             # Get xy coordinates only
@@ -611,7 +693,7 @@ class Cluster:
             Maximum distance from the ground.
 
         """
-
+        
         if delta is not None and not self.is_filtered():
 
             # Lowest z-value
@@ -670,6 +752,7 @@ def cartesian_to_spherical(coordinates):
         Polar angle in radians.
         
     """
+    
     x, y, z = coordinates
     r = np.linalg.norm(coordinates)
     theta = np.arctan2(y, x)
@@ -688,6 +771,7 @@ def label_from(image):
         Image path.
 
     """
+    
     # Filename
     basename = os.path.basename(image)
     
