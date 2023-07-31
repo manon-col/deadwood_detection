@@ -89,7 +89,7 @@ class ClEngine:
         print(f"File {self._filename}.las loaded successfully.")
         
         try:
-            for cluster in range(len(np.unique(self._las['cluster']))):
+            for cluster in range(1, len(np.unique(self._las.cluster))+1):
                 
                 self._raw_clusters.append(
                     Cluster(label=cluster,
@@ -434,26 +434,7 @@ class ClEngine:
             save_path = f'{folder}/{self._filename}'
             
             for cluster in self._clusters:
-
-                # Create destination folder if needed
-                if not os.path.exists(save_path): os.makedirs(save_path)
-                
-                # Create new .las file
-                path_out = \
-                f'{save_path}/{self._filename}_{cluster.get_label()}.las'
-                new_las = laspy.create(point_format=7, file_version="1.4")
-                
-                # Add a new field "cluster"
-                new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
-                                                             type=np.uint32))
-                new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
-                new_las.write(path_out)
-                
-                points = cluster.las_points(header=new_las.header)
-
-                # Append .las points to new file
-                with laspy.open(path_out, mode="a") as las_out:
-                    las_out.append_points(points)
+                cluster.create_las(save_path=save_path, prefix=self._filename)
             
             print(f"Point clouds successfully saved in {save_path}.")
 
@@ -601,7 +582,7 @@ class Cluster:
         """
 
         self._label = label
-
+        
     def create_img(self, save_path, prefix, figsize, dpi):
         """
         Plot cluster points with a color depending on the z-coordinate.
@@ -688,7 +669,39 @@ class Cluster:
         point_record.cluster = str(self._label)
 
         return point_record
+    
+    def create_las(self, save_path, prefix):
+        """
+        Create a .las file containing cluster points.
 
+        Parameters
+        ----------
+        save_path : string
+            Folder where to save the file.
+        prefix : string
+            Prefix of file name.
+        
+        """
+        
+        # Create destination folder if needed
+        if not os.path.exists(save_path): os.makedirs(save_path)
+        
+        # Create new .las file
+        path_out = f'{save_path}/{prefix}_cluster_{self._label}.las'
+        new_las = laspy.create(point_format=7, file_version="1.4")
+        
+        # Add a new field "cluster"
+        new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
+                                                     type=np.uint32))
+        new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
+        new_las.write(path_out)
+        
+        points = self.las_points(header=new_las.header)
+        
+        # Append .las points to new file
+        with laspy.open(path_out, mode="a") as las_out:
+            las_out.append_points(points)
+    
     def nb_points_filter(self, nb_points):
         """
         Filter a cluster based on a minimum number of points.
