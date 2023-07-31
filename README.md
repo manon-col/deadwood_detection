@@ -7,6 +7,7 @@ The following python packages are needed. For TensorFlow setup, please see docum
 ```
 pip install laspy
 pip install pandas
+pip install hdbscan
 pip install scikit-learn
 ```
 Note: .las files are not visible in the repo because they are too large.<br /><br />
@@ -15,6 +16,7 @@ Note: .las files are not visible in the repo because they are too large.<br /><b
 
 laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/latest/index.html``<br />
 scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
+The hdbscan clustering library: ``https://hdbscan.readthedocs.io/en/latest/index.html``<br />
 TensorFlow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
 Convolutional Neural Network with TensorFlow: ``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``<br />
 NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br />
