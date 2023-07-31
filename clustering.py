@@ -13,9 +13,10 @@ import laspy
 import random
 import numpy as np
 import pandas as pd
+from hdbscan import HDBSCAN
 import matplotlib.pyplot as plt
+from sklearn.cluster import DBSCAN
 from scipy.spatial.distance import cdist
-from sklearn.cluster import DBSCAN, HDBSCAN
 
 
 class ClEngine:
@@ -144,6 +145,7 @@ class ClEngine:
               f"{len(self._raw_clusters)}, elapsed time: " + elapsed_time)
     
     def HDBSCAN_clustering(self, min_cluster_size=500,
+                           max_cluster_size=200000,
                            min_samples=10):
         """
         Cluster data finely using hierarchical density-based clustering. The
@@ -156,6 +158,9 @@ class ClEngine:
             The minimum number of samples in a group for that group to be
             considered a cluster; groupings smaller than this size will be left
             as noise. The default is 500.
+        max_cluster_size : integer, optional
+            The maximum number of samples a cluster can have. The default is
+            200000.
         min_samples : integer, optional
             The number of samples in a neighborhood for a point to be
             considered as a core point. This includes the point itself. The
@@ -181,6 +186,7 @@ class ClEngine:
                     
                     # Run HDBSCAN algorithm
                     clustering = HDBSCAN(min_cluster_size=min_cluster_size,
+                                         max_cluster_size=max_cluster_size,
                                          min_samples=min_samples)
                     points = cluster.get_points()
                     clustering.fit(points)
@@ -192,8 +198,14 @@ class ClEngine:
                         # Ignore noise points
                         if label != -1:
                             
-                            # Get current cluster points
-                            new_cluster_points = points[labels == label]
+                            # If no subscluster found (only 1 cluster and noise
+                            # detected with hdbscan), keep dbscan cluster
+                            if len(unique_labels) == 2:
+                                new_cluster_points = cluster.get_points()
+                            
+                            else:
+                                # Get current cluster points
+                                new_cluster_points = points[labels == label]
                             
                             # Create cluster object
                             self._raw_clusters.append(
@@ -344,8 +356,6 @@ class ClEngine:
 
         """
 
-        print("Saving unfiltered clusters in .las file...")
-        
         if not os.path.exists(folder): os.makedirs(folder)
         
         if self._raw_clusters or self._clusters:
@@ -361,17 +371,9 @@ class ClEngine:
             new_las.write(path_out)
 
             # Filling the "cluster" field
-
-            for cluster in self._clusters:
-
-                points = cluster.las_points(header=new_las.header)
-
-                # Append .las points to new file
-                with laspy.open(path_out, mode="a") as las_out:
-                    las_out.append_points(points)
-
+            
             if not self._clusters:
-
+                
                 print("Warning: clusters are not filtered, saving all " +
                       "clusters...")
 
@@ -383,12 +385,23 @@ class ClEngine:
                     with laspy.open(path_out, mode="a") as las_out:
                         las_out.append_points(points)
                 
-                print(f"{len(self._clusters)} clusters saved.")
+                print(f"{len(self._raw_clusters)} clusters successfully saved"+
+                      f" in {path_out}.")
+            
+            else:
                 
-                return
-
-            print(f"{len(self._clusters)} clusters successfully saved in "+
-                  f"{path_out}.")
+                print("Saving unfiltered clusters in .las file...")
+                
+                for cluster in self._clusters:
+                    
+                    points = cluster.las_points(header=new_las.header)
+    
+                    # Append .las points to new file
+                    with laspy.open(path_out, mode="a") as las_out:
+                        las_out.append_points(points)
+    
+                print(f"{len(self._clusters)} clusters successfully saved in "+
+                      f"{path_out}.")
 
         else: print("Please run the clustering method first.")
 
