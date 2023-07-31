@@ -31,18 +31,30 @@ class ClEngine:
     performed.
     
     Methods:
+        
     - __init__(self, las_file): Initialize the object and read the LAS file.
     - DBSCAN_clustering(self, eps=0.05, min_samples=100): Perform euclidean
       clustering using the DBSCAN algorithm.
-    - draw_clusters(self): Draw the clustering results.
-    - save_clusters_las(self, folder, suffix): Save the clustering results in a
-      new LAS file.
-    - save_clusters_img(self, folder, figsize=(4, 4), dpi=75): Create and save
-      .png images from each cluster.
-    - filtering(self, nb_points=500, coord_file=None, sep=';', dec=',',
-      distance_from_centre=18, delta=0.1, min_dist=1): Filter clusters based on
-      various criteria.
-    - reset_filtering(self): Reset the filtering status of all clusters.
+    - HDBSCAN_clustering(self, min_cluster_size=500,
+      max_cluster_size=200000, min_samples=10): Cluster data finely using
+      hierarchical density-based clustering.
+    - get_clusters(self): Return the last created list of clusters.
+    - filtering(self, nb_points=None, coord_file=None, sep=';', dec=',',
+      distance_from_centre=18, delta=0.5, min_dist=1): Basic cluster filter
+      based on various criteria.
+    - keep_clusters(self, cluster_list): Keep only clusters whose index is in
+      cluster_list, filter the others.
+    - reset_filtering(self): Set the status of all clusters to unfiltered.
+    - save_all_points(self, folder, suffix): Save the clustering results in a
+      new LAS file, in the specified folder, with the cluster label in the
+      'cluster' field (filtered clusters are not saved).
+    - save_individual_points(self, folder): Create and save .las files from
+      each cluster, in a sub-folder of the specified directory.
+    - save_individual_images(self, folder, figsize=(4, 4), dpi=75): Create
+      and save .png images from each cluster, in a sub-folder of the specified
+      directory.
+    - draw_clusters(self): Draw the clustering results (simply), with points
+      in the same cluster of the same colour.
     
     """
     
@@ -87,8 +99,7 @@ class ClEngine:
             
             print(f"{len(self._clusters)} clusters found.")
                 
-        except (AttributeError, ValueError):
-            pass
+        except (AttributeError, ValueError): pass
 
     def DBSCAN_clustering(self, eps=0.05, min_samples=100):
         """
@@ -341,7 +352,7 @@ class ClEngine:
             
             self._clusters[index].set_label(index+1)
 
-    def save_clusters_las(self, folder, suffix):
+    def save_all_points(self, folder, suffix):
         """
         Save the clustering results in a new las file, in the specified folder,
         with the cluster label in the 'cluster' field (filtered clusters are
@@ -404,8 +415,51 @@ class ClEngine:
                       f"{path_out}.")
 
         else: print("Please run the clustering method first.")
+    
+    def save_individual_points(self, folder):
+        """
+        Create and save .las files from each cluster, in a sub-folder of the
+        specified directory.
 
-    def save_clusters_img(self, folder, figsize=(4, 4), dpi=75):
+        Parameters
+        ----------
+        folder : string
+            Parent folder for cluster files.
+
+        """
+        
+        if self._clusters:
+
+            print("Saving clusters in individual .las files...")
+            save_path = f'{folder}/{self._filename}'
+            
+            for cluster in self._clusters:
+
+                # Create destination folder if needed
+                if not os.path.exists(save_path): os.makedirs(save_path)
+                
+                # Create new .las file
+                path_out = \
+                f'{save_path}/{self._filename}_{cluster.get_label()}.las'
+                new_las = laspy.create(point_format=7, file_version="1.4")
+                
+                # Add a new field "cluster"
+                new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
+                                                             type=np.uint32))
+                new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
+                new_las.write(path_out)
+                
+                points = cluster.las_points(header=new_las.header)
+
+                # Append .las points to new file
+                with laspy.open(path_out, mode="a") as las_out:
+                    las_out.append_points(points)
+            
+            print(f"Point clouds successfully saved in {save_path}.")
+
+        else: print("Please filter clusters first.")
+    
+    def save_individual_images(self, folder, figsize=(4, 4), dpi=75):
         """
         Create and save .png images from each cluster, in a sub-folder of the
         specified directory.
@@ -423,7 +477,7 @@ class ClEngine:
 
         if self._clusters:
 
-            print("Saving unfiltered clusters in .png files...")
+            print("Saving clusters in individual .png files...")
 
             for cluster in self._clusters:
 
