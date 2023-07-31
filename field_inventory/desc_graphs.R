@@ -83,6 +83,21 @@ plot_box_vol <- ggplot(data, aes(species, volume_tot)) +
                      labels = label_number(scale = 10 ^ (1 / 3))) +
   scale_color_viridis_d()
 
+# Mid-length circumference, boxplot
+plot_box_circ <- ggplot(data, aes(species, circ_ml)) +
+  geom_boxplot(aes(col=species), show.legend=FALSE) +
+  labs(x = "Species", y = "Mid-length circumference") +
+  theme_minimal() +
+  theme(axis.line = element_line(size = 0.5, linetype=1),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        axis.text.x = element_text(hjust=1, vjust=1, angle=45)
+  ) +
+  scale_y_continuous(expand = c(0,0,0,1),
+                     breaks = scales::pretty_breaks(n = 2)) +
+  scale_color_viridis_d()
+plot_box_circ
+
 # Arrange 2 graphs together
 des <- ggarrange(
   plot_spec_saprox,
