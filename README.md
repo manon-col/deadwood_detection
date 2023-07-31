@@ -17,7 +17,8 @@ laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/la
 scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
 TensorFlow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
 Convolutional Neural Network with TensorFlow: ``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``<br />
-NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br /><br />
+NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br />
+TreeQSM : ``https://github.com/InverseTampere/TreeQSM``<br /><br />
 
 ### References<br /><br />
 
