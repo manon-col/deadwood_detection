@@ -11,12 +11,17 @@ import os
 import time
 import laspy
 import random
+import warnings
 import numpy as np
 import pandas as pd
-from hdbscan import HDBSCAN
 import matplotlib.pyplot as plt
+from collections import Counter
 from sklearn.cluster import DBSCAN
+from hdbscan import HDBSCAN, validity
+from sklearn.base import BaseEstimator
 from scipy.spatial.distance import cdist
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import make_scorer, silhouette_score
 
 
 class ClEngine:
@@ -68,6 +73,7 @@ class ClEngine:
             File containing the points to process.
 
         """
+        
         if not las_file.lower().endswith('.las'):
             raise ValueError("The file must have the .las extension.")
 
@@ -100,24 +106,35 @@ class ClEngine:
             print(f"{len(self._clusters)} clusters found.")
                 
         except (AttributeError, ValueError): pass
-
-    def DBSCAN_clustering(self, eps=0.05, min_samples=100):
+    
+    def DBSCAN_clustering(self, tuning=False, n_iter=10, display=False,
+                          eps=0.05, min_samples=100):
         """
-        An euclidian clustering operation of points of the las file, using the
+        An euclidean clustering operation of points of the las file, using the
         DBSCAN algorithm.
 
         Parameters
         ----------
+        tuning : boolean, optional
+            If True, DBSCAN hyperparameter tuning is performed on the epsilon
+            and min_samples parameters. The default is False.
+        n_iter : integer, optional
+            The number of iterations for randomized search. The default is 10.
+        display : boolean, optional
+            If True, print the best parameters found during hyperparameter
+            tuning. The default is false.
         eps : float, optional
             The maximum distance between two samples for one to be considered
             as in the neighborhood of the other. This is not a maximum bound on
             the distances of points within a cluster. This is the most
             important DBSCAN parameter to choose appropriately for your data
-            set and distance function. The default is 0.05m.
+            set and distance function. Not taken into account if tuning is
+            True. The default is 0.05m.
         min_samples : float, optional
             The number of samples (or total weight) in a neighborhood for a
             point to be considered as a core point. This includes the point
-            itself. The default is 100.
+            itself. Not taken into account if tuning is True. The default is
+            100.
 
         """
         
@@ -125,13 +142,28 @@ class ClEngine:
         
         start = time.time()
         
-        # Run DBSCAN algorithm
-        clustering = DBSCAN(eps=eps,
-                            min_samples=min_samples)
-        clustering.fit(self._data_xyz)
+        if tuning is True:
+            
+            # Run DBSCAN algorithm and perform hyperparameter tuning
+            clustering_tuner = ClusteringTuner(cluster_type='dbscan',
+                                               n_iter=n_iter)
+            
+            # Best clustering results
+            self._labels = clustering_tuner.fit_predict(self._data_xyz)
+            
+            if display is True:
+                best_params = clustering_tuner.get_best_params()
+                print(f"Best Parameters: {best_params}")
+        
+        else:
+            
+            # Run DBSCAN algorithm
+            clustering = DBSCAN(eps=eps,
+                                min_samples=min_samples)
+            clustering.fit(self._data_xyz)
 
-        # Clustering results
-        self._labels = clustering.labels_
+            # Clustering results
+            self._labels = clustering.labels_
 
         # Number of clusters in labels, ignore noise (0) if present
         unique_labels = set(self._labels)
@@ -155,27 +187,46 @@ class ClEngine:
         print("DBSCAN clustering done, estimated number of clusters: " +
               f"{len(self._raw_clusters)}, elapsed time: " + elapsed_time)
     
-    def HDBSCAN_clustering(self, min_cluster_size=500,
+    def HDBSCAN_clustering(self, tuning = False,
+                           n_iter=10,
+                           n_test=None,
+                           display=False,
+                           min_cluster_size=500,
                            max_cluster_size=200000,
                            min_samples=10):
         """
-        Cluster data finely using hierarchical density-based clustering. The
-        data must already have been clustered by DBSCAN algorithm, as HDBSCAN
-        is used on each cluster (otherwise the processing time is too long).
+        Cluster data finely using hierarchical density-based euclidean
+        clustering. The data must already have been clustered by DBSCAN
+        algorithm, as HDBSCAN is used on each cluster (otherwise the processing
+        time is too long).
         
         Parameters
         ----------
+        tuning : boolean, optional
+            If True, DBSCAN hyperparameter tuning is performed on the
+            min_samples and min_cluster_size parameters. The default is False.
+        n_iter : integer, optional
+            The number of iterations for randomized search. The default is 10.
+        n_test : integer, optional
+            When the best parameters found during hyperparameter tuning are the
+            same (or almost) n_test times, these parameters are chosen for the
+            following clusters in order to save time (only if not None). The
+            default is None.
+        display : boolean, optional
+            If True, print the best parameters found during hyperparameter
+            tuning. The default is False.
         min_cluster_size : integer, optional
             The minimum number of samples in a group for that group to be
             considered a cluster; groupings smaller than this size will be left
-            as noise. The default is 500.
+            as noise. Not taken into account if tuning is True. The default is
+            500.
         max_cluster_size : integer, optional
-            The maximum number of samples a cluster can have. The default is
-            200000.
+            The maximum number of samples a cluster can have. Not taken into
+            account if tuning is True. The default is 200000.
         min_samples : integer, optional
             The number of samples in a neighborhood for a point to be
-            considered as a core point. This includes the point itself. The
-            default is 10.
+            considered as a core point. This includes the point itself. Not
+            taken into account if tuning is True.The default is 10.
         
         """
         
@@ -184,44 +235,106 @@ class ClEngine:
             cl_list = self._raw_clusters # copy of cluster list
             self._raw_clusters = [] # re-initialise
             
+            param_dict= {'tuning': tuning,
+                         'min_cluster_size': min_cluster_size,
+                         'max_cluster_size': max_cluster_size,
+                         'min_samples': min_samples
+                         }
+            
+            best_params_list = []
+            
             print("Performing HDBSCAN fine clustering...")
             
-            start = time.time() 
+            start = time.time()
             
-            for index in range(1, len(cl_list)):
+            for cluster in cl_list:
                 
-                cluster = cl_list[index]
+                # Get current cluster points
+                points = cluster.get_points()
                 
                 # Avoid unnecessary clustering of small clusters
-                if len(cluster.get_points()) > min_cluster_size:
+                if param_dict['tuning'] is False and len(cluster.get_points())\
+                    >= param_dict['min_cluster_size']:
                     
                     # Run HDBSCAN algorithm
-                    clustering = HDBSCAN(min_cluster_size=min_cluster_size,
-                                         max_cluster_size=max_cluster_size,
-                                         min_samples=min_samples)
-                    points = cluster.get_points()
+                    clustering = HDBSCAN(
+                        min_cluster_size=param_dict['min_cluster_size'],
+                        max_cluster_size=param_dict['max_cluster_size'],
+                        min_samples=param_dict['min_samples'])
+                    
                     clustering.fit(points)
                     labels = clustering.labels_
+                
+                elif param_dict['tuning'] is True:
+                    
+                    # Run HDBSCAN algorithm and perform hyperparameter tuning
+                    clustering_tuner = ClusteringTuner(
+                        cluster_type='hdbscan', n_iter=n_iter)
+                    
+                    # Best clustering results
+                    labels = clustering_tuner.fit_predict(points)
+                    
+                    best_params = clustering_tuner.get_best_params()
+                    best_params_list.append(best_params)
+                    
+                    if display is True:
+                        print(f"Best Parameters: {best_params}")
+                    
+                    if n_test is not None and len(best_params_list) == n_test:
+                        
+                        keys = [(params['min_samples'],
+                                 params['min_cluster_size'],
+                                 params['max_cluster_size']) \
+                                for params in best_params_list]
+                        
+                        occurrences = Counter(keys)
+                        most_common = occurrences.most_common(1)[0][0]
+                        
+                        # Using best parameters to continue clustering, stop
+                        # hyperparameter tuning
+                        param_dict['tuning'] = False
+                        param_dict['min_samples'] = most_common[0]
+                        param_dict['min_cluster_size'] = most_common[1]
+                        param_dict['max_cluster_size'] = most_common[2]
+                        
+                        print(f"Using min_cluster_size={most_common[1]}, "+
+                              f"max_cluster_size={most_common[2]}, "+
+                              f"min_samples={most_common[0]} to continue "+
+                              "hdbscan clustering as they were the best\n"+
+                              f"parameters {occurrences.most_common(1)[0][1]}"+
+                              f" times out of {n_test}...")
+                
+                else: labels = None
+                
+                if labels is not None:
+                    
                     unique_labels = set(labels)
+                    
+                    # If no subscluster found (only noise and eventually 1
+                    # cluster found with hdbscan), keep dbscan cluster
+                    if len(unique_labels) <= 2:
                         
-                    for label in unique_labels:
+                        new_cluster_points = points
                         
-                        # Ignore noise points
-                        if label != -1:
+                        # Create cluster object
+                        self._raw_clusters.append(
+                            Cluster(label=len(self._raw_clusters)+1,
+                                    points=new_cluster_points))
+                    
+                    else:
+                        
+                        for label in unique_labels:
                             
-                            # If no subscluster found (only 1 cluster and noise
-                            # detected with hdbscan), keep dbscan cluster
-                            if len(unique_labels) == 2:
-                                new_cluster_points = cluster.get_points()
-                            
-                            else:
+                            # Ignore noise points
+                            if label != -1:
+                                
                                 # Get current cluster points
                                 new_cluster_points = points[labels == label]
-                            
-                            # Create cluster object
-                            self._raw_clusters.append(
-                                Cluster(label=len(self._raw_clusters)+1,
-                                        points=new_cluster_points))
+                                
+                                # Create cluster object
+                                self._raw_clusters.append(
+                                    Cluster(label=len(self._raw_clusters)+1,
+                                            points=new_cluster_points))
             
             end = time.time()
             elapsed_time = self._timer(start, end)  
@@ -811,6 +924,155 @@ class Cluster:
             
             except MemoryError: print("MemoryError: Skipping cluster due to " +
                                       "excessive memory usage.")
+
+
+class ClusteringTuner(BaseEstimator):
+    """
+    Hyperparameter tuner for DBSCAN and HDBSCAN clustering algorithms.
+    
+    """
+    
+    def __init__(self, cluster_type, n_iter=10):
+        """
+        Initialize the ClusteringTuner object.
+
+        Parameters
+        ----------
+        cluster_type : string, optional
+            The type of clustering algorithm to tune. Possible values are
+            'dbscan' and 'hdbscan'.
+        n_iter : integer, optional
+            The number of iterations for randomized search. The default is
+            10.
+                
+        """
+        
+        self.cluster_type = cluster_type
+        self.n_iter = n_iter
+        self.best_params = None
+
+    def fit(self, X):
+        """
+        Fit the tuner to the input data and find the best hyperparameters for
+        the specified cluster_type.
+
+        Parameters
+        ----------
+            X : array-like, shape (n_samples, n_features)
+                The input data.
+            
+        """
+        
+        if self.cluster_type == 'dbscan':
+            
+            param_dist = {
+                'eps': [0.03, 0.04, 0.05, 0.06],
+                'min_samples': [10, 50, 100, 200, 500]
+            }
+            
+            self.best_params_ = self._tune_params(DBSCAN(), param_dist, X)
+            self.best_clustering_ = DBSCAN(**self.best_params_)
+
+        elif self.cluster_type == 'hdbscan':
+            
+            param_dist = {
+                'min_cluster_size': [100, 200, 500, 1000, 1500],
+                'max_cluster_size': [150000, 200000, 250000, 300000],
+                'min_samples': [2, 5, 10, 20, 50]
+            }
+                        
+            # Filter out UserWarning during tuning
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                self.best_params_ = self._tune_params(HDBSCAN(), param_dist, X)
+            
+            self.best_clustering_ = HDBSCAN(**self.best_params_)
+
+        else:
+            raise ValueError(
+                "Invalid cluster_type. Use 'dbscan' or 'hdbscan'.")
+
+        self.best_clustering_.fit(X)
+    
+    def _silhouette_score(self, estimator, X):
+        """
+        Calculate the silhouette score for the clustering estimator.
+
+        Parameters
+        ----------
+        estimator : object
+            The clustering model to evaluate.
+        X : array-like, shape (n_samples, n_features)
+            The input data.
+
+        Returns
+        -------
+        silhouette_score : float
+            The silhouette score of the clustering.
+
+        """
+        labels = estimator.fit_predict(X)
+        return silhouette_score(X, labels)
+    
+    def _tune_params(self, clustering_model, param_dist, X):
+        """
+        Perform randomized search for hyperparameter tuning.
+
+        Parameters
+        ----------
+        clustering_model : object
+            The clustering model to tune.
+        param_dist : dict
+            Dictionary of hyperparameter distributions for randomized search.
+        X : array-like, shape (n_samples, n_features)
+            The input data.
+
+        Returns
+        -------
+        best_params : dict
+            Dictionary of the best hyperparameters found during tuning.
+
+        """
+        
+        if self.cluster_type == 'dbscan':
+            scorer = make_scorer(self._silhouette_score,
+                                 greater_is_better=True)
+        else:
+            scorer = make_scorer(validity.validity_index,
+                                 greater_is_better=True)
+        
+        tuner = RandomizedSearchCV(clustering_model,
+                                   param_distributions=param_dist,
+                                   n_iter=self.n_iter, n_jobs=-1,
+                                   scoring=scorer,
+                                   random_state=42)
+        tuner.fit(X)
+        
+        self.best_params = tuner.best_params_
+        
+        return self.best_params
+
+    def fit_predict(self, X):
+        """
+        Fit the tuner to the input data and perform clustering with the best
+        hyperparameters.
+        
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            The input data.
+        
+        Returns
+        ----------
+        labels : array, shape (n_samples,)
+            Cluster labels for each data point.
+        
+        """
+        
+        self.fit(X)
+        return self.best_clustering_.labels_
+    
+    def get_best_params(self): return self.best_params
 
 
 def cartesian_to_spherical(coordinates):
