@@ -498,9 +498,6 @@ class ClEngine:
             
             if not self._clusters:
                 
-                print("Warning: clusters are not filtered, saving all " +
-                      "clusters...")
-
                 for cluster in self._raw_clusters:
 
                     points = cluster.las_points(header=new_las.header)
@@ -967,10 +964,14 @@ class ClusteringTuner(BaseEstimator):
             
             param_dist = {
                 'eps': [0.03, 0.04, 0.05, 0.06],
-                'min_samples': [10, 50, 100, 200, 500]
+                'min_samples': [10, 20, 50, 100, 200]
             }
             
-            self.best_params_ = self._tune_params(DBSCAN(), param_dist, X)
+            # Filter out UserWarning during tuning
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore")
+                self.best_params_ = self._tune_params(DBSCAN(), param_dist, X)
+            
             self.best_clustering_ = DBSCAN(**self.best_params_)
 
         elif self.cluster_type == 'hdbscan':
@@ -983,7 +984,7 @@ class ClusteringTuner(BaseEstimator):
                         
             # Filter out UserWarning during tuning
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=UserWarning)
+                warnings.filterwarnings("ignore")
                 self.best_params_ = self._tune_params(HDBSCAN(), param_dist, X)
             
             self.best_clustering_ = HDBSCAN(**self.best_params_)
