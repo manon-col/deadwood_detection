@@ -10,9 +10,15 @@ pip install pandas
 pip install hdbscan
 pip install scikit-learn
 ```
-Note: .las files are not visible in the repo because they are too large.<br /><br />
+The following R packages are also needed.
+```
+install.packages("lidR")
+# install.packages("devtools")
+devtools::install_github("lmterryn/ITSMe", build_vignettes = TRUE)
+```
 
-### Documentation<br /><br />
+## Documentation <br />
+<br />
 
 laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/latest/index.html``<br />
 scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
@@ -20,9 +26,11 @@ The hdbscan clustering library: ``https://hdbscan.readthedocs.io/en/latest/index
 TensorFlow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
 Convolutional Neural Network with TensorFlow: ``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``<br />
 NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br />
-TreeQSM : ``https://github.com/InverseTampere/TreeQSM``<br /><br />
+TreeQSM: ``https://github.com/InverseTampere/TreeQSM``<br />
+ITSMe: ``https://github.com/lmterryn/ITSMe``<br /><br />
 
-### References<br /><br />
+## References <br />
+<br />
 
 Computree Core Team. 2017. Computree platform. Office National des Forêts, RDI Department. 
 http://rdinnovation.onf.fr/computree. <br /><br />
