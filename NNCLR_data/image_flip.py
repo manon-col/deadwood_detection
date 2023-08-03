@@ -33,10 +33,10 @@ def flip_images(folder):
         image = Image.open(input_path)
 
         # Perform up/down flip
-        image_flip_up_down = image.transpose(Image.FLIP_TOP_BOTTOM)
-        output_path = os.path.join(folder,
-                                   f"{output_path_base}_flip_up_down.png")
-        image_flip_up_down.save(output_path)
+        # image_flip_up_down = image.transpose(Image.FLIP_TOP_BOTTOM)
+        # output_path = os.path.join(folder,
+        #                            f"{output_path_base}_flip_up_down.png")
+        # image_flip_up_down.save(output_path)
 
         # Perform left/right flip
         image_flip_left_right = image.transpose(Image.FLIP_LEFT_RIGHT)
@@ -45,14 +45,14 @@ def flip_images(folder):
         image_flip_left_right.save(output_path)
 
         # Perform diagonal flip (up/down and left/right)
-        image_flip_diagonal = image_flip_up_down.transpose(Image.FLIP_LEFT_RIGHT)
-        output_path = os.path.join(folder,
-                                   f"{output_path_base}_flip_diagonal.png")
-        image_flip_diagonal.save(output_path)
+        # image_flip_diagonal = image_flip_up_down.transpose(Image.FLIP_LEFT_RIGHT)
+        # output_path = os.path.join(folder,
+        #                            f"{output_path_base}_flip_diagonal.png")
+        # image_flip_diagonal.save(output_path)
 
 
 if __name__ == "__main__":
     
     # Here we don't have enough images in the "deadwood" class
-    folder = 'NNCLR_data/labelled/deadwood'
+    folder = 'labelled/deadwood'
     flip_images(folder)
