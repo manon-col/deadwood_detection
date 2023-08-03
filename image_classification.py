@@ -293,12 +293,43 @@ class Model:
         return deadwood_images
 
 
+class Rescaling(layers.Layer):
+    """
+    Same that keras Rescaling layer. Avoid strange errors and slowness.
+    
+    """
+    
+    def __init__(self, scale, offset=0., name=None, **kwargs):
+        
+      self.scale = scale
+      self.offset = offset
+      super(Rescaling, self).__init__(name=name, **kwargs)
+    
+    def call(self, inputs):
+        
+      dtype = self._compute_dtype
+      scale = tf.cast(self.scale, dtype)
+      offset = tf.cast(self.offset, dtype)
+      return tf.cast(inputs, dtype) * scale + offset
+    
+    def compute_output_shape(self, input_shape):
+        return input_shape
+    
+    def get_config(self):
+        
+      config = {
+          'scale': self.scale,
+          'offset': self.offset,
+      }
+      base_config = super(Rescaling, self).get_config()
+      return dict(list(base_config.items()) + list(config.items()))
+
 def augmenter(name, input_shape):
     
     return keras.Sequential(
         [
             layers.Input(shape=input_shape),
-            layers.Rescaling(1 / 255),
+            Rescaling(1 / 255),
             layers.RandomFlip("horizontal"),
             layers.RandomRotation(
                 # Rotation between -10° and 10°
