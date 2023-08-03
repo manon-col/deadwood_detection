@@ -1035,6 +1035,7 @@ class ClusteringTuner(BaseEstimator):
 
         """
         
+        #/!\/!\/!\ scorers need to be changed, it doesn't work yet /!\/!\/!\
         if self.cluster_type == 'dbscan':
             scorer = make_scorer(self._silhouette_score,
                                  greater_is_better=True)
@@ -1044,7 +1045,7 @@ class ClusteringTuner(BaseEstimator):
         
         tuner = RandomizedSearchCV(clustering_model,
                                    param_distributions=param_dist,
-                                   n_iter=self.n_iter, n_jobs=-1,
+                                   n_iter=self.n_iter, n_jobs=4,
                                    scoring=scorer,
                                    random_state=42)
         tuner.fit(X)
