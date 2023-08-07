@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """
+Program to build or load a NNCLR model, and classify images.
 
 @author: manon-col
 """
@@ -17,6 +18,8 @@ class Model:
     def __init__(self, model_path, image_size, batch_size, num_epochs):
         
         self._model_path = model_path
+        self._pretraining_checkpoint_path = model_path+'/checkpoint_pretraining'
+        self._finetuning_checkpoint_path = model_path+'/checkpoint_finetuning'
         self._labelled = model_path+'/labelled'
         self._unlabelled = model_path+'/unlabelled'
         
@@ -85,6 +88,33 @@ class Model:
             (self._unlabelled_train_ds, self._labelled_train_ds)
         ).prefetch(buffer_size=self._AUTOTUNE)
     
+    def visualize_augmented_images(self, image_dataset, num_images=5):
+
+        plt.figure(figsize=(num_images * 2, 4))
+    
+        augmenter_model = augmenter('visu', input_shape=self._input_shape)
+    
+        for batch in image_dataset.take(1):
+            original_images = batch[0][:num_images].numpy()
+    
+            for i in range(num_images):
+                plt.subplot(2, num_images, i + 1)
+                plt.imshow((original_images[i] * 255).astype(np.uint8))
+                plt.title("Original")
+                plt.axis("off")
+    
+            augmented_images = augmenter_model(original_images, training=True)
+    
+            for i in range(num_images):
+                augmented_image = (
+                    augmented_images[i].numpy() * 255).astype(np.uint8)
+                plt.subplot(2, num_images, num_images + i + 1)
+                plt.imshow(augmented_image)
+                plt.title("Augmented")
+                plt.axis("off")
+    
+        plt.show()
+        
     def pretraining(self):
         
         print("Building NNCLR model.")
@@ -101,17 +131,24 @@ class Model:
             probe_optimizer=keras.optimizers.Adam(),
         )
         
+        # Fit model, model weights are saved if they are the best seen so far
         pretrain_history = self._model.fit(
-            self._train_ds, epochs=self._num_epochs, validation_data=self._val_ds,
+            self._train_ds, epochs=self._num_epochs,
+            validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._model_path,
+                    self._pretraining_checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_p_loss"),
-                tf.keras.callbacks.EarlyStopping(monitor="val_p_loss", patience=5)]
+                tf.keras.callbacks.EarlyStopping(monitor="val_p_loss",
+                                                 patience=10)]
         )
         
+        # Load best model weights into the model
+        self._model.load_weights(self._pretraining_checkpoint_path)
+        
+        # Plot metric evolution over epochs
         self.plot_history(pretrain_history, "Pretraining History")
     
     def finetuning(self, save_path):
@@ -138,12 +175,16 @@ class Model:
             validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._model_path,
+                    self._finetuning_checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_loss"),
-                tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=5)] 
+                tf.keras.callbacks.EarlyStopping(monitor="val_loss",
+                                                 patience=10)] 
         )
+        
+        # Load best model weights into the model
+        self._model.load_weights(self._finetuning_checkpoint_path)
         
         self.plot_history(finetuning_history, "Finetuning History")
         
@@ -157,6 +198,10 @@ class Model:
         )
     
     def plot_history(self, history, title):
+        """
+        Plot metrics evolution over epochs.
+        
+        """
         
         plt.figure(figsize=(12, 4))
         
@@ -224,7 +269,7 @@ class Model:
         self._probability_model = tf.keras.Sequential([self._model,
                                                        layers.Softmax()])
     
-    def prediction(self, images, threshold=None):
+    def prediction(self, images, thres_in_dw=None, thres_out_other=None):
         """
         Realise image predictions in batch. The threshold allows flexibility
         depending on the score value. Return a list of images classified as
@@ -234,10 +279,13 @@ class Model:
         ----------
         images : list
             List of images to predict.
-        threshold : integer, optional
-            If set, images classified as "deadwood" with a score >= threshold
-            are evicted, while images classified as "other" with a score <
-            (threshold - 1) are kept. The default is None.
+        thres_in_dw : integer, optional
+            If set, images classified as "deadwood" with a score >= tres_in_dw
+            are kept while images with a score < tres_in_dw are evicted. The
+            default is None.
+        thres_out_other : integer, optional
+            If set, images classified as "other" with a score <= tres_out_other
+            are kept while the other are evicted. The default is None.
 
         Returns
         -------
@@ -275,20 +323,16 @@ class Model:
         
         for i in range(len(images)):
             
-            if threshold is None:
-                
-                if predicted_classes[i] == 0:
-                    deadwood_images.append(images[i])
+            if thres_in_dw is None and predicted_classes[i] == 0:
+                deadwood_images.append(images[i])
             
-            else:
-                
-                if predicted_classes[i] == 1 and \
-                    predicted_scores[i] < (1-threshold):
-                    deadwood_images.append(images[i])
+            if thres_in_dw is not None and predicted_classes[i] == 0 and \
+                predicted_scores[i] >= thres_in_dw:
+                deadwood_images.append(images[i])
                     
-                if predicted_classes[i] == 0 and \
-                    predicted_scores[i] >= threshold:
-                    deadwood_images.append(images[i])
+            if thres_out_other is not None and predicted_classes[i] == 1 and \
+                predicted_scores[i] <= thres_out_other:
+                deadwood_images.append(images[i])
         
         return deadwood_images
 
@@ -300,14 +344,10 @@ def augmenter(name, input_shape):
             layers.Input(shape=input_shape),
             layers.Rescaling(1 / 255),
             layers.RandomFlip("horizontal"),
-            layers.RandomRotation(
-                # Rotation between -10° and 10°
-                factor=(-10/180.0*3.141592653589793,
-                        10/180.0*3.141592653589793)
-                ),
+            layers.RandomRotation(factor=(-0.05, 0.05)),
             layers.RandomTranslation(
-                height_factor=(-0.2, 0.3),
-                width_factor=(-0.2, 0.3)
+                height_factor=(-0.2, 0.2),
+                width_factor=(-0.2, 0.2)
                 )
         ],
         name=name,
@@ -492,7 +532,7 @@ class NNCLR(keras.Model):
             tf.concat([projections_1, self._feature_queue[:-batch_size]], axis=0)
         )
         return loss
-
+    
     def train_step(self, data):
             
         (unlabelled_images, _), (labelled_images, labels) = data
