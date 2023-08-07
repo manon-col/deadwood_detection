@@ -88,5 +88,5 @@ if __name__ == "__main__":
     
     # Here we don't have enough images in the "deadwood" class
     folder = 'labelled/deadwood'
-    # flip_images(folder)
-    enhance_images(folder, factors=[0.9,1.1])
+    flip_images(folder)
+    # enhance_images(folder, factors=[0.9,1.1])
