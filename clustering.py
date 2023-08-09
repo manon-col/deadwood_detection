@@ -92,7 +92,7 @@ class ClEngine:
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
         
-        print(f"File {self._filename}.las loaded successfully.")
+        
         
         try:
             for cluster in range(1, len(np.unique(self._las.cluster))+1):
@@ -102,11 +102,16 @@ class ClEngine:
                             points=self._data_xyz[self._las.cluster==cluster]))
                 
             self._clusters = self._raw_clusters
-            
-            print(f"{len(self._clusters)} clusters found.")
                 
         except (AttributeError, ValueError): pass
-    
+        
+        if len(self._clusters)==0:
+            print(f"File {self._filename}.las loaded successfully.")
+        
+        else:
+            print(f"File {self._filename}.las loaded successfully, "+
+                  f"{len(self._clusters)} clusters found.")
+        
     def DBSCAN_clustering(self, tuning=False, n_iter=10, display=False,
                           eps=0.05, min_samples=100):
         """
@@ -465,7 +470,7 @@ class ClEngine:
             
             self._clusters[index].set_label(index+1)
 
-    def save_all_points(self, folder, suffix):
+    def save_all_points(self, folder, suffix=None):
         """
         Save the clustering results in a new las file, in the specified folder,
         with the cluster label in the 'cluster' field (filtered clusters are
@@ -526,7 +531,7 @@ class ClEngine:
 
         else: print("Please run the clustering method first.")
     
-    def save_individual_points(self, folder):
+    def save_individual_points(self, folder, suffix=None):
         """
         Create and save .las files from each cluster, in a sub-folder of the
         specified directory.
@@ -535,6 +540,8 @@ class ClEngine:
         ----------
         folder : string
             Parent folder for cluster files.
+        suffix : string
+            Las file name suffix before extension.
 
         """
         
@@ -544,7 +551,8 @@ class ClEngine:
             save_path = f'{folder}/{self._filename}'
             
             for cluster in self._clusters:
-                cluster.create_las(save_path=save_path, prefix=self._filename)
+                cluster.create_las(save_path=save_path, prefix=self._filename,
+                                   suffix=suffix)
             
             print(f"Point clouds successfully saved in {save_path}.")
 
@@ -780,7 +788,7 @@ class Cluster:
 
         return point_record
     
-    def create_las(self, save_path, prefix):
+    def create_las(self, save_path, prefix, suffix):
         """
         Create a .las file containing cluster points.
 
@@ -790,6 +798,8 @@ class Cluster:
             Folder where to save the file.
         prefix : string
             Prefix of file name.
+        suffix : string
+            Filename suffix before extension.
         
         """
         
@@ -797,7 +807,7 @@ class Cluster:
         if not os.path.exists(save_path): os.makedirs(save_path)
         
         # Create new .las file
-        path_out = f'{save_path}/{prefix}_cluster_{self._label}.las'
+        path_out = f'{save_path}/{prefix}_{suffix}_cluster_{self._label}.las'
         new_las = laspy.create(point_format=7, file_version="1.4")
         
         # Add a new field "cluster"
