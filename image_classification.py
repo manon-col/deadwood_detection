@@ -9,19 +9,27 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
-from tensorflow.keras import layers
-from tensorflow.keras import utils
+from tensorflow.keras import layers, utils
+# from tensorflow.keras.applications import ResNet50
 
 
 class Model:
     
-    def __init__(self, model_path, image_size, batch_size, num_epochs):
+    def __init__(self, model_path=None, load=False, image_size=(300,300),
+                 batch_size=32, num_epochs=25):
+        
+        # Initialise all paths
         
         self._model_path = model_path
+        self._save_path = model_path + '/finetuning_model'
         self._pretraining_checkpoint_path = model_path+'/checkpoint_pretraining'
         self._finetuning_checkpoint_path = model_path+'/checkpoint_finetuning'
         self._labelled = model_path+'/labelled'
         self._unlabelled = model_path+'/unlabelled'
+        
+        if load is True: self.load(filepath=self._save_path)
+        
+        # Initialise hyperparameters
         
         self._image_size = image_size
         self._input_shape = (self._image_size[0], self._image_size[1], 3)
@@ -33,7 +41,7 @@ class Model:
         self._shuffle_buffer = 5000
         
         self._temperature = 0.1
-        self._queue_size = 10000
+        self._queue_size = 98304
     
         self._contrastive_augmenter = {
             "name": "contrastive_augmenter",
@@ -43,85 +51,104 @@ class Model:
             "name": "classification_augmenter",
         }
         
-        self._width = 128
-    
     def prepare_dataset(self):
        
         labelled_batch_size = self._batch_size // 2
         unlabelled_batch_size = self._batch_size // 2
         
-        self._labelled_train_ds = (utils.image_dataset_from_directory(
-            self._labelled,
-            validation_split=0.2,
-            subset="training",
-            seed=42,
-            image_size=self._image_size,
+        self._labelled_train_ds, self._val_ds = (
+            utils.image_dataset_from_directory(
+                self._labelled,
+                validation_split=0.2,
+                subset="both",
+                seed=42,
+                image_size=self._image_size,
+                batch_size=None
+                )
             )
-            .unbatch()
-            .batch(batch_size=labelled_batch_size, drop_remainder=True)
-            .shuffle(buffer_size=self._shuffle_buffer)
-        )
         
-        self._val_ds = (utils.image_dataset_from_directory(
-            self._labelled,
-            validation_split=0.2,
-            subset="validation",
-            seed=42,
-            image_size=self._image_size,
-            )
-            .unbatch()
-            .batch(batch_size=self._batch_size, drop_remainder=True)
-            .prefetch(buffer_size=self._AUTOTUNE)
-        )
+        self._labelled_train_ds = self._labelled_train_ds.shuffle(
+            buffer_size=self._shuffle_buffer)
+        self._labelled_train_ds = self._labelled_train_ds.batch(
+            batch_size=labelled_batch_size, drop_remainder=True)
+        
+        self._val_ds = self._val_ds.batch(
+            batch_size=self._batch_size, drop_remainder=True)
+        self._val_ds = self._val_ds.prefetch(buffer_size=self._AUTOTUNE)
         
         self._unlabelled_train_ds = (utils.image_dataset_from_directory(
             self._unlabelled,
             seed=42,
             image_size=self._image_size,
+            batch_size=None
             )
-            .unbatch()
-            .batch(batch_size=unlabelled_batch_size, drop_remainder=True)
             .shuffle(buffer_size=self._shuffle_buffer)
+            .batch(batch_size=unlabelled_batch_size, drop_remainder=True) 
         )
         
         self._train_ds = tf.data.Dataset.zip(
             (self._unlabelled_train_ds, self._labelled_train_ds)
         ).prefetch(buffer_size=self._AUTOTUNE)
     
-    def visualize_augmented_images(self, image_dataset, num_images=5):
+    def visualize_augmented_images(self, image_dataset, num_images=5,
+                                   save_path=None):
 
         plt.figure(figsize=(num_images * 2, 4))
     
         augmenter_model = augmenter('visu', input_shape=self._input_shape)
     
         for batch in image_dataset.take(1):
+            
             original_images = batch[0][:num_images].numpy()
-    
-            for i in range(num_images):
-                plt.subplot(2, num_images, i + 1)
-                plt.imshow((original_images[i] * 255).astype(np.uint8))
-                plt.title("Original")
-                plt.axis("off")
-    
             augmented_images = augmenter_model(original_images, training=True)
-    
+            
             for i in range(num_images):
+                
+                original_image = (original_images[i]).astype(np.uint8)
+                plt.subplot(2, num_images, i + 1)
+                plt.imshow(original_image)
+                
+                a = plt.gca() # current axes
+ 
+                # set visibility of x-axis as False
+                xax = a.axes.get_xaxis()
+                xax = xax.set_visible(False)
+                 
+                # set visibility of y-axis as False
+                yax = a.axes.get_yaxis()
+                yax = yax.set_visible(False)
+                
                 augmented_image = (
                     augmented_images[i].numpy() * 255).astype(np.uint8)
                 plt.subplot(2, num_images, num_images + i + 1)
                 plt.imshow(augmented_image)
-                plt.title("Augmented")
-                plt.axis("off")
-    
+                
+                a = plt.gca()
+ 
+                xax = a.axes.get_xaxis()
+                xax = xax.set_visible(False)
+                
+                yax = a.axes.get_yaxis()
+                yax = yax.set_visible(False)
+        
+        dev = num_images//2
+        if num_images%2 > 0: dev = (num_images//2)+1
+        
+        plt.subplot(2, num_images, dev)
+        plt.title("Original images", loc="center")
+        
+        plt.subplot(2, num_images, num_images + dev)
+        plt.title("Augmented images", loc="center")
+        
+        plt.tight_layout()
+        
+        if save_path is not None: plt.savefig(f"{save_path}/augmentations.png")
         plt.show()
-        
+    
     def pretraining(self):
-        
-        print("Building NNCLR model.")
-        
+                
         self._model = NNCLR(temperature=self._temperature,
                             queue_size=self._queue_size,
-                            width=self._width,
                             input_shape=self._input_shape,
                             contrastive_augmenter=self._contrastive_augmenter,
                             classification_augmenter=self._classification_augmenter)
@@ -130,7 +157,7 @@ class Model:
             contrastive_optimizer=keras.optimizers.Adam(),
             probe_optimizer=keras.optimizers.Adam(),
         )
-        
+                
         # Fit model, model weights are saved if they are the best seen so far
         pretrain_history = self._model.fit(
             self._train_ds, epochs=self._num_epochs,
@@ -142,7 +169,8 @@ class Model:
                     save_best_only=True,
                     monitor="val_p_loss"),
                 tf.keras.callbacks.EarlyStopping(monitor="val_p_loss",
-                                                 patience=10)]
+                                                 patience=10),
+                ]
         )
         
         # Load best model weights into the model
@@ -151,7 +179,7 @@ class Model:
         # Plot metric evolution over epochs
         self.plot_history(pretrain_history, "Pretraining History")
     
-    def finetuning(self, save_path):
+    def finetuning(self, save=False):
         
         finetuning_model = keras.Sequential(
             [
@@ -159,7 +187,7 @@ class Model:
                 augmenter(**self._classification_augmenter,
                           input_shape=self._input_shape),
                 self._model.encoder,
-                layers.Dense(10),
+                layers.Dense(2, activation='softmax'),
             ],
             name="finetuning_model",
         )
@@ -188,14 +216,16 @@ class Model:
         
         self.plot_history(finetuning_history, "Finetuning History")
         
-        finetuning_model.save(
-            filepath=save_path,
-            overwrite=True,
-            save_format=None,
-            options=None,
-            include_optimizer=True,
-            signatures=None
-        )
+        if save is True:
+            
+            finetuning_model.save(
+                filepath=self._save_path,
+                overwrite=True,
+                save_format=None,
+                options=None,
+                include_optimizer=True,
+                signatures=None
+            )
     
     def plot_history(self, history, title):
         """
@@ -246,11 +276,16 @@ class Model:
             plt.legend()
 
         plt.suptitle(title)
+        # plt.savefig(f"{title}_{self._batch_size}.png")
         plt.show()
     
     def load(self, filepath):
+        """
+        Load a trained model that was saved in filepath.
+
+        """
         
-        self._model = tf.keras.models.load_model(filepath, compile=False)
+        self._model = tf.keras.models.load_model(filepath)
         
         for layer in self._model.layers:
             if not isinstance(layer, layers.Dense):
@@ -262,9 +297,13 @@ class Model:
             metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
             )
         
-        self._model.summary()
+        self._model.summary() # print a summary of the model
     
     def _build_pm(self):
+        """
+        Build predictive model from trained/loaded model.
+
+        """
         
         self._probability_model = tf.keras.Sequential([self._model,
                                                        layers.Softmax()])
@@ -293,6 +332,7 @@ class Model:
             List of the input images classified as deadwood.
 
         """
+        
         # Initialise array of all images
         array = None
         
@@ -322,7 +362,7 @@ class Model:
         predicted_scores = tf.reduce_max(predictions, axis=1).numpy()
         
         for i in range(len(images)):
-            
+                            
             if thres_in_dw is None and predicted_classes[i] == 0:
                 deadwood_images.append(images[i])
             
@@ -334,83 +374,114 @@ class Model:
                 predicted_scores[i] <= thres_out_other:
                 deadwood_images.append(images[i])
         
+        print(f"{len(deadwood_images)} images classified as deadwood.")
         return deadwood_images
 
 
 def augmenter(name, input_shape):
+    """
+    Generate image augmentations to increase variability over epochs.
+
+    """
     
     return keras.Sequential(
         [
             layers.Input(shape=input_shape),
-            layers.Rescaling(1 / 255),
-            layers.RandomFlip("horizontal"),
-            layers.RandomRotation(factor=(-0.05, 0.05)),
+            layers.Rescaling(1 / 255), # normalise color values between 0 and 1
+            layers.RandomRotation(factor=(-0.05, 0.05)), # slight rotation
             layers.RandomTranslation(
                 height_factor=(-0.2, 0.2),
                 width_factor=(-0.2, 0.2)
-                )
+                ) # slight translation
         ],
         name=name,
     )
 
 
-def encoder(input_shape, width):
+def encoder(input_shape):
+    """
+    Define encoder architecture, that consists in 4 convolutional layers with
+    increasing width (from 32 to 256).
+
+    """
     
     return keras.Sequential(
         [
             layers.Input(shape=input_shape),
-            layers.Conv2D(width, kernel_size=3, activation="relu"),
+            layers.Conv2D(32, kernel_size=3, strides=1, activation="relu"),
             layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Conv2D(width, kernel_size=3, activation="relu"),
+            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
+            layers.Conv2D(64, kernel_size=3, strides=1, activation="relu"),
             layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Conv2D(width, kernel_size=3, activation="relu"),
+            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
+            layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
             layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2)),
-            layers.Conv2D(width, kernel_size=3, activation="relu"),
+            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
+            layers.Conv2D(256, kernel_size=3, strides=2, activation="relu"),
             layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2)),
+            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
             layers.Flatten(),
-            layers.Dense(width, activation="relu"),
+            layers.Dense(256, activation='relu'),
         ],
         name="encoder",
     )
 
+
+# # ResNet50 encoder: huge p_loss, too many layers for our kind of data
+# def encoder(input_shape):
     
+#     return keras.Sequential(
+#         [
+#             ResNet50(
+#                 include_top=False,
+#                 weights=None, # random initialisation
+#                 input_shape=input_shape,
+#                 pooling='avg'), # output is a 2D tensor
+#         ],
+#         name="encoder",
+#     )
+
+
 class NNCLR(keras.Model):
+    """
+    Manage a NNCLR model built from inherited class keras.Model.
     
-    def __init__(
-            
-        self, temperature, queue_size, width, input_shape,
-        contrastive_augmenter, classification_augmenter
-    ):
+    """
+    
+    def __init__(self, temperature, queue_size, input_shape,
+                 contrastive_augmenter, classification_augmenter):
+        
         super().__init__()
         self._temperature = temperature
         self._queue_size = queue_size
-        self._width = width
         self._input_shape = input_shape
         
         self._probe_accuracy = keras.metrics.SparseCategoricalAccuracy()
         self._correlation_accuracy = keras.metrics.SparseCategoricalAccuracy()
         self._contrastive_accuracy = keras.metrics.SparseCategoricalAccuracy()
-        self._probe_loss = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        self._probe_loss = keras.losses.SparseCategoricalCrossentropy(
+            from_logits=True)
 
-        self._contrastive_augmenter = augmenter(**contrastive_augmenter,
-                                                input_shape=self._input_shape)
-        self._classification_augmenter = augmenter(**classification_augmenter,
-                                                   input_shape=self._input_shape)
-        self.encoder = encoder(input_shape=self._input_shape, width=self._width)
+        self._contrastive_augmenter = augmenter(
+            **contrastive_augmenter, input_shape=self._input_shape)
+        self._classification_augmenter = augmenter(
+            **classification_augmenter, input_shape=self._input_shape)
+        
+        self.encoder = encoder(input_shape=self._input_shape)
+        self._width = self.encoder.output_shape[-1] # width = 128
+        
         self._projection_head = keras.Sequential(
             [
-                layers.Input(shape=(width,)),
-                layers.Dense(width, activation="relu"),
-                layers.Dense(width),
+                layers.Input(shape=(self._width,)),
+                layers.Dense(self._width, activation="relu"),
+                layers.Dense(self._width),
             ],
             name="projection_head",
         )
         self._linear_probe = keras.Sequential(
-            [layers.Input(shape=(self._width,)), layers.Dense(10)], name="linear_probe"
+            [layers.Input(shape=(self._width,)),
+             layers.Dense(2)], # there are 2 classes
+            name="linear_probe"
         )
 
         feature_dimensions = self.encoder.output_shape[1]
@@ -434,7 +505,8 @@ class NNCLR(keras.Model):
             projections, self._feature_queue, transpose_b=True
         )
         nn_projections = tf.gather(
-            self._feature_queue, tf.argmax(support_similarities, axis=1), axis=0
+            self._feature_queue, tf.argmax(support_similarities, axis=1),
+            axis=0
         )
         return projections + tf.stop_gradient(nn_projections - projections)
 
@@ -470,7 +542,8 @@ class NNCLR(keras.Model):
         correlation_labels = tf.range(feature_dim)
         self._correlation_accuracy.update_state(
             tf.concat([correlation_labels, correlation_labels], axis=0),
-            tf.concat([cross_correlation, tf.transpose(cross_correlation)], axis=0),
+            tf.concat([cross_correlation, tf.transpose(cross_correlation)],
+                      axis=0),
         )
 
     def contrastive_loss(self, projections_1, projections_2):
@@ -480,26 +553,30 @@ class NNCLR(keras.Model):
 
         similarities_1_2_1 = (
             tf.matmul(
-                self.nearest_neighbour(projections_1), projections_2, transpose_b=True
+                self.nearest_neighbour(projections_1), projections_2,
+                transpose_b=True
             )
             / self._temperature
         )
         similarities_1_2_2 = (
             tf.matmul(
-                projections_2, self.nearest_neighbour(projections_1), transpose_b=True
+                projections_2, self.nearest_neighbour(projections_1),
+                transpose_b=True
             )
             / self._temperature
         )
 
         similarities_2_1_1 = (
             tf.matmul(
-                self.nearest_neighbour(projections_2), projections_1, transpose_b=True
+                self.nearest_neighbour(projections_2), projections_1,
+                transpose_b=True
             )
             / self._temperature
         )
         similarities_2_1_2 = (
             tf.matmul(
-                projections_1, self.nearest_neighbour(projections_2), transpose_b=True
+                projections_1, self.nearest_neighbour(projections_2),
+                transpose_b=True
             )
             / self._temperature
         )
@@ -529,13 +606,15 @@ class NNCLR(keras.Model):
         )
 
         self._feature_queue.assign(
-            tf.concat([projections_1, self._feature_queue[:-batch_size]], axis=0)
+            tf.concat([projections_1, self._feature_queue[:-batch_size]],
+                      axis=0)
         )
         return loss
     
     def train_step(self, data):
             
         (unlabelled_images, _), (labelled_images, labels) = data
+        
         images = tf.concat((unlabelled_images, labelled_images), axis=0)
         augmented_images_1 = self._contrastive_augmenter(images)
         augmented_images_2 = self._contrastive_augmenter(images)
@@ -545,17 +624,15 @@ class NNCLR(keras.Model):
             features_2 = self.encoder(augmented_images_2)
             projections_1 = self._projection_head(features_1)
             projections_2 = self._projection_head(features_2)
-            contrastive_loss = self.contrastive_loss(projections_1, projections_2)
-        gradients = tape.gradient(
-            contrastive_loss,
-            self.encoder.trainable_weights + self._projection_head.trainable_weights,
-        )
+            contrastive_loss = self.contrastive_loss(projections_1,
+                                                     projections_2)
+        gradients = tape.gradient(contrastive_loss,
+                                  self.encoder.trainable_weights + \
+                                      self._projection_head.trainable_weights)
         self._contrastive_optimizer.apply_gradients(
-            zip(
-                gradients,
-                self.encoder.trainable_weights + self._projection_head.trainable_weights,
-            )
-        )
+            zip(gradients, self.encoder.trainable_weights + \
+                self._projection_head.trainable_weights))
+            
         self.update_contrastive_accuracy(features_1, features_2)
         self.update_correlation_accuracy(features_1, features_2)
         preprocessed_images = self._classification_augmenter(labelled_images)
@@ -564,10 +641,11 @@ class NNCLR(keras.Model):
             features = self.encoder(preprocessed_images)
             class_logits = self._linear_probe(features)
             probe_loss = self._probe_loss(labels, class_logits)
-        gradients = tape.gradient(probe_loss, self._linear_probe.trainable_weights)
+            
+        gradients = tape.gradient(probe_loss,
+                                  self._linear_probe.trainable_weights)
         self._probe_optimizer.apply_gradients(
-            zip(gradients, self._linear_probe.trainable_weights)
-        )
+            zip(gradients, self._linear_probe.trainable_weights))
         self._probe_accuracy.update_state(labels, class_logits)
 
         return {
@@ -576,18 +654,19 @@ class NNCLR(keras.Model):
             "r_acc": self._correlation_accuracy.result(),
             "p_loss": probe_loss,
             "p_acc": self._probe_accuracy.result(),
-        }
+            }
 
     def test_step(self, data):
         
         labelled_images, labels = data
 
         preprocessed_images = self._classification_augmenter(
-            labelled_images, training=False
-        )
+            labelled_images, training=False)
+        
         features = self.encoder(preprocessed_images, training=False)
         class_logits = self._linear_probe(features, training=False)
         probe_loss = self._probe_loss(labels, class_logits)
 
         self._probe_accuracy.update_state(labels, class_logits)
+        
         return {"p_loss": probe_loss, "p_acc": self._probe_accuracy.result()}
