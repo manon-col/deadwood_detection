@@ -22,8 +22,7 @@ class Model:
         
         self._model_path = model_path
         self._save_path = model_path + '/finetuning_model'
-        self._pretraining_checkpoint_path = model_path+'/checkpoint_pretraining'
-        self._finetuning_checkpoint_path = model_path+'/checkpoint_finetuning'
+        self._checkpoint_path = model_path + '/checkpoint'
         self._labelled = model_path+'/labelled'
         self._unlabelled = model_path+'/unlabelled'
         
@@ -164,7 +163,7 @@ class Model:
             validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._pretraining_checkpoint_path,
+                    self._checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_p_loss"),
@@ -174,7 +173,7 @@ class Model:
         )
         
         # Load best model weights into the model
-        self._model.load_weights(self._pretraining_checkpoint_path)
+        self._model.load_weights(self._checkpoint_path)
         
         # Plot metric evolution over epochs
         self.plot_history(pretrain_history, "Pretraining History")
@@ -187,7 +186,7 @@ class Model:
                 augmenter(**self._classification_augmenter,
                           input_shape=self._input_shape),
                 self._model.encoder,
-                layers.Dense(2, activation='softmax'),
+                layers.Dense(2),
             ],
             name="finetuning_model",
         )
@@ -203,7 +202,7 @@ class Model:
             validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._finetuning_checkpoint_path,
+                    self._checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_loss"),
@@ -212,7 +211,7 @@ class Model:
         )
         
         # Load best model weights into the model
-        self._model.load_weights(self._finetuning_checkpoint_path)
+        self._model.load_weights(self._checkpoint_path)
         
         self.plot_history(finetuning_history, "Finetuning History")
         
