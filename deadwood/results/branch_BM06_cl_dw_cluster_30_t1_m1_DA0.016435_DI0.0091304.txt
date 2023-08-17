@@ -1,0 +1,4 @@
+order	parent	diameter (m)	volume (L)	area (m^2)	length (m)	height (m)	angle (deg)	azimuth (deg)	zenith (deg)
+0	0	0.0392	2.0224	0.221	1.942	0	0	90.2	41.3
+1	1	0.0214	0.0924	0.0183	0.294	0.076	68.4	4.6	64.6
+1	1	0.0294	0.1226	0.0167	0.18	0.116	91.8	-179.1	83
