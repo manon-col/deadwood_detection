@@ -33,26 +33,32 @@ for folderIdx = 1:length(subfoldersList)
         ptCloud = readPointCloud(lasReader);
         P = ptCloud.Location;
         
-        % Transform coordinates into a local coordinate system
-        P = P - mean(P);
-        
-        % Define inputs
-        inputs.savemat = 1;
-        inputs.savetxt = 1;
-        inputs.disp = 1;
-        inputs.Dist = 1;
-        inputs = define_input(P,1,3,2);
-        inputs.plot = 0;
-        inputs.Tria = 0;
-        inputs.name = name;
-        
-        % Execute the QSM algorithm
-        QSMs= treeqsm(P,inputs);
-        [treeQSM,OptModels,OptInputs,OptQSM] = select_optimum(QSMs);
-        treeQSM = select_optimum(QSMs,'trunk+branch_mean_dis');
-        
-        % Save results
-        save(join(['QSMs/', inputs.name,'_OptQSM.mat']),"OptQSM",'-mat');
+        try
+            % Transform coordinates into a local coordinate system
+            P = P - mean(P);
+            
+            % Define inputs
+            inputs.savemat = 1;
+            inputs.savetxt = 1;
+            inputs.disp = 1;
+            inputs.Dist = 1;
+            inputs = define_input(P,1,3,2);
+            inputs.plot = 0;
+            inputs.Tria = 0;
+            inputs.name = name;
+            
+            % Execute the QSM algorithm
+            QSMs= treeqsm(P,inputs);
+            [treeQSM,OptModels,OptInputs,OptQSM] = select_optimum(QSMs);
+            treeQSM = select_optimum(QSMs,'trunk+branch_mean_dis');
+            
+            % Save results
+            save(join([dataPath,'/QSMs/', inputs.name,'_QSM.mat']),"OptQSM",'-mat');
+            
+        catch
+            % Nothing to do
+
+        end
 
     end
 end
