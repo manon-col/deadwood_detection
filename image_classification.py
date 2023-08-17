@@ -10,19 +10,19 @@ import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
 from tensorflow.keras import layers, utils
-# from tensorflow.keras.applications import ResNet50
 
 
 class Model:
     
     def __init__(self, model_path=None, load=False, image_size=(300,300),
-                 batch_size=32, num_epochs=25):
+                 batch_size=32, num_epochs=25, encoder='custom'):
         
         # Initialise all paths
         
         self._model_path = model_path
         self._save_path = model_path + '/finetuning_model'
-        self._checkpoint_path = model_path + '/checkpoint'
+        self._pt_checkpoint_path = model_path + '/pretraining_checkpoint'
+        self._ft_checkpoint_path = model_path + '/finetuning_checkpoint'
         self._labelled = model_path+'/labelled'
         self._unlabelled = model_path+'/unlabelled'
         
@@ -41,14 +41,8 @@ class Model:
         
         self._temperature = 0.1
         self._queue_size = 98304
-    
-        self._contrastive_augmenter = {
-            "name": "contrastive_augmenter",
-        }
         
-        self._classification_augmenter = {
-            "name": "classification_augmenter",
-        }
+        self._encoder_name = encoder
         
     def prepare_dataset(self):
        
@@ -144,13 +138,12 @@ class Model:
         if save_path is not None: plt.savefig(f"{save_path}/augmentations.png")
         plt.show()
     
-    def pretraining(self):
+    def pretraining(self, patience=5):
                 
         self._model = NNCLR(temperature=self._temperature,
                             queue_size=self._queue_size,
                             input_shape=self._input_shape,
-                            contrastive_augmenter=self._contrastive_augmenter,
-                            classification_augmenter=self._classification_augmenter)
+                            encoder_name=self._encoder_name)
         
         self._model.compile(
             contrastive_optimizer=keras.optimizers.Adam(),
@@ -163,36 +156,41 @@ class Model:
             validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._checkpoint_path,
+                    self._pt_checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_p_loss"),
-                tf.keras.callbacks.EarlyStopping(monitor="val_p_loss",
-                                                 patience=10),
+                keras.callbacks.EarlyStopping(monitor="val_p_loss",
+                                              patience=patience),
                 ]
         )
         
         # Load best model weights into the model
-        self._model.load_weights(self._checkpoint_path)
+        self._model.load_weights(self._pt_checkpoint_path)
         
         # Plot metric evolution over epochs
         self.plot_history(pretrain_history, "Pretraining History")
     
-    def finetuning(self, save=False):
+    def finetuning(self, patience=5, save=False):
+        
+        for layer in self._model.encoder.layers:
+            if not isinstance(layer, layers.Dense):
+                layer.trainable = False
         
         finetuning_model = keras.Sequential(
             [
                 layers.Input(shape=self._input_shape),
-                augmenter(**self._classification_augmenter,
+                augmenter('classification_augmenter',
                           input_shape=self._input_shape),
                 self._model.encoder,
+                layers.Dense(self._model._width, activation='relu'),
                 layers.Dense(2),
             ],
             name="finetuning_model",
         )
         
         finetuning_model.compile(
-            optimizer=keras.optimizers.Adam(),
+            optimizer=keras.optimizers.Adam(learning_rate=0.0001),
             loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
             metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
         )
@@ -202,16 +200,16 @@ class Model:
             validation_data=self._val_ds,
             callbacks= [
                 keras.callbacks.ModelCheckpoint(
-                    self._checkpoint_path,
+                    self._ft_checkpoint_path,
                     save_weights_only=True,
                     save_best_only=True,
                     monitor="val_loss"),
-                tf.keras.callbacks.EarlyStopping(monitor="val_loss",
-                                                 patience=10)] 
+                keras.callbacks.EarlyStopping(monitor="val_loss",
+                                              patience=patience)]
         )
         
         # Load best model weights into the model
-        self._model.load_weights(self._checkpoint_path)
+        finetuning_model.load_weights(self._ft_checkpoint_path)
         
         self.plot_history(finetuning_history, "Finetuning History")
         
@@ -304,8 +302,8 @@ class Model:
 
         """
         
-        self._probability_model = tf.keras.Sequential([self._model,
-                                                       layers.Softmax()])
+        self._probability_model = tf.keras.Sequential(
+            [self._model, layers.Softmax()])
     
     def prediction(self, images, thres_in_dw=None, thres_out_other=None):
         """
@@ -361,7 +359,7 @@ class Model:
         predicted_scores = tf.reduce_max(predictions, axis=1).numpy()
         
         for i in range(len(images)):
-                            
+            
             if thres_in_dw is None and predicted_classes[i] == 0:
                 deadwood_images.append(images[i])
             
@@ -397,48 +395,92 @@ def augmenter(name, input_shape):
     )
 
 
-def encoder(input_shape):
+def encoder(name, input_shape):
     """
     Define encoder architecture, that consists in 4 convolutional layers with
     increasing width (from 32 to 256).
 
     """
     
-    return keras.Sequential(
-        [
-            layers.Input(shape=input_shape),
-            layers.Conv2D(32, kernel_size=3, strides=1, activation="relu"),
-            layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
-            layers.Conv2D(64, kernel_size=3, strides=1, activation="relu"),
-            layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
-            layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
-            layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
-            layers.Conv2D(256, kernel_size=3, strides=2, activation="relu"),
-            layers.BatchNormalization(),
-            layers.MaxPooling2D(pool_size=(2, 2), padding="same"),
-            layers.Flatten(),
-            layers.Dense(256, activation='relu'),
-        ],
-        name="encoder",
-    )
-
-
-# # ResNet50 encoder: huge p_loss, too many layers for our kind of data
-# def encoder(input_shape):
+    if name == 'custom':
+        
+        return keras.Sequential(
+            [
+                layers.Input(shape=input_shape),
+                
+                layers.Conv2D(32, kernel_size=3, strides=1, activation="relu"),
+                layers.MaxPooling2D(pool_size=(3, 3)),
+                
+                layers.Conv2D(64, kernel_size=3, strides=1, activation="relu"),
+                layers.MaxPooling2D(pool_size=(3, 3)),
+                                
+                layers.Conv2D(128, kernel_size=3, strides=1, activation="relu"),    
+                layers.MaxPooling2D(pool_size=(2, 2)),
+                          
+                layers.Conv2D(256, kernel_size=3, strides=1, activation="relu"),
+                layers.MaxPooling2D(pool_size=(2, 2)),
+                
+                layers.Dropout(0.4),
+                layers.Flatten(),
+                layers.Dense(128, activation='relu'),
+            ],
+            name="custom",
+        )
     
-#     return keras.Sequential(
-#         [
-#             ResNet50(
-#                 include_top=False,
-#                 weights=None, # random initialisation
-#                 input_shape=input_shape,
-#                 pooling='avg'), # output is a 2D tensor
-#         ],
-#         name="encoder",
-#     )
+    if name == 'basic':
+        
+        return keras.Sequential(
+            [
+                layers.Input(shape=input_shape),
+                layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
+                layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
+                layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
+                layers.Conv2D(128, kernel_size=3, strides=2, activation="relu"),
+                layers.Flatten(),
+                layers.Dense(128, activation="relu"),
+            ],
+            name="basic",
+        )
+    
+    if name == 'VGG-16':
+               
+        return keras.Sequential(
+            [
+                layers.Input(shape=input_shape),
+                layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(64, (3, 3), activation='relu', padding='same'),
+                layers.MaxPooling2D((2, 2), strides=(2, 2)),
+                layers.BatchNormalization(),
+            
+                layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(128, (3, 3), activation='relu', padding='same'),
+                layers.MaxPooling2D((2, 2), strides=(2, 2)),
+                layers.BatchNormalization(),
+            
+                layers.Conv2D(256, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(256, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(256, (3, 3), activation='relu', padding='same'),
+                layers.MaxPooling2D((2, 2), strides=(2, 2)),
+                layers.BatchNormalization(),
+            
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.MaxPooling2D((2, 2), strides=(2, 2)),
+                layers.BatchNormalization(),
+            
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.Conv2D(512, (3, 3), activation='relu', padding='same'),
+                layers.MaxPooling2D((2, 2), strides=(2, 2)),
+                layers.BatchNormalization(),
+            
+                layers.Flatten(),
+                layers.Dense(4096, activation='relu'),
+                layers.Dense(4096, activation='relu'),
+            ],
+            name="VGG-16",
+        )
 
 
 class NNCLR(keras.Model):
@@ -447,8 +489,7 @@ class NNCLR(keras.Model):
     
     """
     
-    def __init__(self, temperature, queue_size, input_shape,
-                 contrastive_augmenter, classification_augmenter):
+    def __init__(self, temperature, queue_size, input_shape, encoder_name):
         
         super().__init__()
         self._temperature = temperature
@@ -460,14 +501,16 @@ class NNCLR(keras.Model):
         self._contrastive_accuracy = keras.metrics.SparseCategoricalAccuracy()
         self._probe_loss = keras.losses.SparseCategoricalCrossentropy(
             from_logits=True)
-
-        self._contrastive_augmenter = augmenter(
-            **contrastive_augmenter, input_shape=self._input_shape)
-        self._classification_augmenter = augmenter(
-            **classification_augmenter, input_shape=self._input_shape)
         
-        self.encoder = encoder(input_shape=self._input_shape)
-        self._width = self.encoder.output_shape[-1] # width = 128
+        self._contrastive_augmenter = augmenter(
+            name='contrastive_augmenter', input_shape=self._input_shape)
+        self._classification_augmenter = augmenter(
+            name='classification_augmenter', input_shape=self._input_shape)
+        
+        self.encoder = encoder(name=encoder_name,
+                               input_shape=self._input_shape)
+        
+        self._width = self.encoder.output_shape[-1] # width = 256
         
         self._projection_head = keras.Sequential(
             [
