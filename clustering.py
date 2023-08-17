@@ -988,7 +988,7 @@ class Cluster:
         y_cluster = sum(self._points[:, 1])/len(self._points[:, 1])
         
         # Calculate azimuth
-        azimuth = np.degrees(np.arctan2(y_cluster, x_cluster)) % 360
+        azimuth = np.degrees(np.arctan2(x_cluster, y_cluster)) % 360
         
         # Calculate distance
         distance = np.sqrt(x_cluster**2 + y_cluster**2)
