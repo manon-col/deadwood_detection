@@ -8,6 +8,7 @@ clustering outputs.
 
 
 import os
+import csv
 import time
 import laspy
 import random
@@ -650,6 +651,42 @@ class ClEngine:
 
         # Showing the plot
         plt.show()
+    
+    def calculate_az_dist(self, results_file=None):
+        """
+        Calculate azimuth and distance from plot centre, for each cluster. The
+        point cloud must be transformed to have the centre at 0,0, with the y
+        axis corresponding to north and the x axis corresponding to east.
+
+        Parameters
+        ----------
+        results_file: string
+            Where to write the results (csv file path). The default is None.
+
+        """
+        
+        if results_file is None: path = 'azim_dist.csv'
+        else: path = results_file
+        
+        # Get plot name from filename (to match the reference field)
+        plot_name = self._filename
+        plot_name = plot_name[:5] # get 5 first characters
+        if plot_name.endswith('_'):
+            plot_name = plot_name[:-1] # avoid end with _
+        
+        # Create results file if it does not already exist
+        if not os.path.exists(path):
+            
+            header = ['plot', 'cluster', 'azimuth', 'distance']
+            
+            with open(results_file, 'w', newline='') as csv_file:
+                
+                csv_writer = csv.writer(csv_file)
+                csv_writer.writerow(header)
+                
+        # Calculate azimuth and distance for each cluster
+        for cluster in self._clusters:
+            cluster.az_dist(plot_name, path)
 
 
 class Cluster:
@@ -931,7 +968,38 @@ class Cluster:
             
             except MemoryError: print("MemoryError: Skipping cluster due to " +
                                       "excessive memory usage.")
+    
+    def az_dist(self, plot_name, results_file):
+        """
+        Calculate azimuth and distance of the middle of the cluster, from the
+        centre of the plot (0,0). Write the results in a csv file.
 
+        Parameters
+        ----------
+        plot_name : string
+            The plot reference.
+        results_file : string
+            Where to write the results.
+
+        """
+        
+        # Get x and y coordinates of cluster centroïd
+        x_cluster = sum(self._points[:, 0])/len(self._points[:, 0])
+        y_cluster = sum(self._points[:, 1])/len(self._points[:, 1])
+        
+        # Calculate azimuth
+        azimuth = np.degrees(np.arctan2(y_cluster, x_cluster)) % 360
+        
+        # Calculate distance
+        distance = np.sqrt(x_cluster**2 + y_cluster**2)
+        
+        # Write results
+        with open(results_file, 'a', newline='') as csv_file:
+            
+            csv_writer = csv.writer(csv_file)
+            new_line = [plot_name, self.get_label(), azimuth, distance]
+            csv_writer.writerow(new_line)
+        
 
 class ClusteringTuner(BaseEstimator):
     """
