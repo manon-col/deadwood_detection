@@ -4,5 +4,3 @@
 *.Rhistory
 .ipynb_checkpoints/main-checkpoint.ipynb
 *.pyc
-*.data-00000-of-00001
-*.index
