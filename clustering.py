@@ -13,6 +13,7 @@ import time
 import laspy
 import random
 import warnings
+import alphashape
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -93,18 +94,28 @@ class ClEngine:
         # Filename without extension
         self._filename = os.path.splitext(os.path.basename(self._las_file))[0]
         
-        
-        
-        try:
+        # Load existing clusters
+        if hasattr(self._las, 'cluster'):
+            
             for cluster in range(1, len(np.unique(self._las.cluster))+1):
                 
-                self._raw_clusters.append(
-                    Cluster(label=cluster,
+                # Load existing volumes
+                if hasattr(self._las, 'volume'):
+                    
+                    self._raw_clusters.append(
+                        Cluster(
+                            label=cluster,
+                            points=self._data_xyz[self._las.cluster==cluster],
+                            volume=self._las.volume[
+                                self._las.cluster==cluster][0]))
+                else:
+                    
+                    self._raw_clusters.append(
+                        Cluster(
+                            label=cluster,
                             points=self._data_xyz[self._las.cluster==cluster]))
-                
+                    
             self._clusters = self._raw_clusters
-                
-        except (AttributeError, ValueError): pass
         
         if len(self._clusters)==0:
             print(f"File {self._filename}.las loaded successfully.")
@@ -362,12 +373,12 @@ class ClEngine:
     
     def filtering(self,
                   nb_points=None,
+                  delta=None,
+                  min_dist=None,
                   coord_file=None,
+                  distance_from_centre=None,
                   sep=';',
-                  dec=',',
-                  distance_from_centre=18,
-                  delta=0.5,
-                  min_dist=1):
+                  dec=','):
         """
         Basic cluster filter based on a minimum number of points, a maximum
         distance from plot centre, a maximum distance from the ground, and a
@@ -379,22 +390,24 @@ class ClEngine:
         nb_points : integer, optional
             Minimum number of points a cluster must contain. Set to None to
             ignore point density filtering. The default is None.
+        delta : float, optional
+            Maximum distance from the ground. Set to None to ignore height
+            filtering. The default is None.    
+        min_dist: integer, optional
+            Minimum distance that the 2 furthest points of the cluster must be
+            from each other. Set to None to ignore length filtering. The
+            default is 1m.    
         coord_file : string, optional
             Path leading to the csv file that contains coordinates of the plot
-            centre. Set to None to ignore distance_from_centre filtering. The
+            centre. If set to None, the centre coordinates are 0,0. The
             default is None.
+        distance_from_centre : integer, optional
+            Actual radius of the inventory plot. Set to None to ignore
+            distance_from_centre filtering. The default is None.
         sep : string, optional
             Seperator of the csv file. The default is ';'.
         dec : string, optional
             Decimal separator of the csv file. The default is ','.
-        distance_from_centre : integer, optional
-            Actual radius of the inventory plot. The default is 18m.
-        delta : float, optional
-            Maximum distance from the ground. The default is 0.5m.    
-        min_dist: integer, optional
-            Minimum distance that the 2 furthest points of the cluster must be
-            from each other. Set to None to ignore length filtering. The
-            default is 1m.
 
         """
         
@@ -471,7 +484,7 @@ class ClEngine:
             
             self._clusters[index].set_label(index+1)
 
-    def save_all_points(self, folder, suffix=None):
+    def save_all_points(self, folder, suffix=''):
         """
         Save the clustering results in a new las file, in the specified folder,
         with the cluster label in the 'cluster' field (filtered clusters are
@@ -481,8 +494,8 @@ class ClEngine:
         ----------
         folder : string
             Where to save the file.
-        suffix : string
-            Filename suffix before extension.
+        suffix : string, optional
+            Filename suffix before extension. The default is ''.
 
         """
 
@@ -497,6 +510,11 @@ class ClEngine:
             # Add a new field "cluster"
             new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
                                                          type=np.uint32))
+            
+            # Add "volume" field if calculated
+            if self._clusters and self._clusters[0].get_volume() is not None:
+                new_las.add_extra_dim(laspy.ExtraBytesParams(name="volume",
+                                                             type=np.float64))
             new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
             new_las.write(path_out)
 
@@ -532,7 +550,7 @@ class ClEngine:
 
         else: print("Please run the clustering method first.")
     
-    def save_individual_points(self, folder, suffix=None):
+    def save_individual_points(self, folder, suffix=''):
         """
         Create and save .las files from each cluster, in a sub-folder of the
         specified directory.
@@ -541,8 +559,8 @@ class ClEngine:
         ----------
         folder : string
             Parent folder for cluster files.
-        suffix : string
-            Las file name suffix before extension.
+        suffix : string, optional
+            Las file name suffix before extension. The default is ''.
 
         """
         
@@ -652,6 +670,65 @@ class ClEngine:
         # Showing the plot
         plt.show()
     
+    def calculate_volumes(self, alpha=50, plot=False):
+        """
+        For each cluster, create an alpha shape (concave hull) from the cluster
+        points and calculate its volume.
+
+        Parameters
+        ----------
+        alpha: integer, optional
+            Alpha parameter for alpha shape creation. The higher the alpha
+            value is, the tighter the bounding shape will fit the data. The
+            default is 50.
+        plot: boolean, optional
+            If True, a plot of the alpha shape is shown. The default is False.
+            
+        """
+        
+        if self._clusters:
+            
+            print("Calculating cluster volumes...")
+            
+            # Calculate volume of all clusters
+            for cluster in self._clusters:
+                cluster.calculate_volume(alpha=alpha, plot=plot)
+                
+        else: print("Please run the clustering method first.")
+        
+    def save_volumes_csv(self, folder, suffix=''):
+        """
+        Save a csv file summarising the cluster volumes.
+
+        Parameters
+        ----------
+        folder : string
+            Where to save the file.
+        suffix : string, optional
+            Suffix of csv filename before extension. The default is ''.
+
+        """
+        
+        if self._clusters:
+            
+            path = f"{folder}/{self._filename}_{suffix}.csv"
+            
+            if self._clusters[0].get_volume() is None:
+                
+                print("Calculating volumes with default parameters.")
+                self.calculate_volumes()
+            
+            with open(path, mode='w', newline='') as csv_file:
+                
+                writer = csv.writer(csv_file)
+                writer.writerow(["cluster", "volume"]) # colnames
+                
+                for cluster in self._clusters:
+                    writer.writerow([cluster.get_label(),
+                                     cluster.get_volume()])
+        
+        else: print("Please run the clustering method first.")
+        
     def calculate_az_dist(self, results_file=None):
         """
         Calculate azimuth and distance from plot centre, for each cluster. The
@@ -696,14 +773,15 @@ class Cluster:
 
     """
 
-    def __init__(self, label, points):
+    def __init__(self, label, points, volume=None):
         self._label = int(label)
         self._points = points
+        self._volume = volume
         self._x = self._points[:, 0]
         self._y = self._points[:, 1]
         self._z = self._points[:, 2]
         self._filtered = False
-
+        
     def __str__(self):
         return(f"Cluster {self._label}, {len(self._points)} points, filtering "
                + f"state: {self._filtered}")
@@ -717,6 +795,9 @@ class Cluster:
 
     def get_points(self):
         return(self._points)
+    
+    def get_volume(self):
+        return(self._volume)
 
     def is_filtered(self, boolean=None):
         """
@@ -822,6 +903,9 @@ class Cluster:
         point_record.y = self._y
         point_record.z = self._z
         point_record.cluster = str(self._label)
+        
+        if self._volume is not None:
+            point_record.volume = np.array([self._volume], dtype=np.float64)
 
         return point_record
     
@@ -848,8 +932,12 @@ class Cluster:
         new_las = laspy.create(point_format=7, file_version="1.4")
         
         # Add a new field "cluster"
-        new_las.add_extra_dim(laspy.ExtraBytesParams(name="cluster",
+        new_las.add_extra_dim(laspy.ExtraBytesParams(name='cluster',
                                                      type=np.uint32))
+        if self._volume is not None:
+            new_las.add_extra_dim(laspy.ExtraBytesParams(name='volume',
+                                                         type=np.float64))
+            
         new_las.header.scales = np.array([1.e-05, 1.e-05, 1.e-05])
         new_las.write(path_out)
         
@@ -898,16 +986,20 @@ class Cluster:
 
         """
         
-        if coord_file is not None and not self.is_filtered():
+        if distance is not None and not self.is_filtered():
 
             # Get xy coordinates only
             points_xy = self._points[:, :2]
-
-            df = pd.read_csv(coord_file, sep=sep, decimal=dec)
-
-            # Get centre coordinates
-            centre_xy = np.array(df.loc[df['reference'] == plot_name,
-                                        ['Xcentre', 'Ycentre']])
+            
+            centre_xy = np.array([0,0])
+            
+            if coord_file is not None:
+                
+                df = pd.read_csv(coord_file, sep=sep, decimal=dec)
+    
+                # Get centre coordinates
+                centre_xy = np.array(df.loc[df['reference'] == plot_name,
+                                            ['Xcentre', 'Ycentre']])
 
             # Calculate euclidean distances between each point and the centre
             distances = cdist(points_xy, centre_xy, 'euclidean')[0]
@@ -968,6 +1060,32 @@ class Cluster:
             
             except MemoryError: print("MemoryError: Skipping cluster due to " +
                                       "excessive memory usage.")
+    
+    def calculate_volume(self, alpha, plot):
+        """
+        Create an alpha shape (concave hull) from the cluster points and
+        calculate its volume.
+        
+        Parameters
+        ----------
+        alpha: integer
+            Alpha parameter for alpha shape creation. The higher the alpha
+            value is, the tighter the bounding shape will fit the data.
+        plot: boolean
+            If True, a plot of the alpha shape is shown.
+        
+        """
+        
+        alpha_shape = alphashape.alphashape(self._points, int(alpha))
+        self._volume = alpha_shape.volume
+        
+        # Show a plot of the alpha shape
+        if plot is True:
+            
+            plt.figure()
+            ax = plt.axes(projection='3d')
+            ax.plot_trisurf(*zip(*alpha_shape.vertices), triangles=alpha_shape.faces)
+            plt.show()
     
     def az_dist(self, plot_name, results_file):
         """
