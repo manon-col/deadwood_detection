@@ -139,7 +139,7 @@ class Model:
         plt.show()
     
     def pretraining(self, patience=5):
-                
+        
         self._model = NNCLR(temperature=self._temperature,
                             queue_size=self._queue_size,
                             input_shape=self._input_shape,
@@ -412,13 +412,13 @@ def encoder(name, input_shape):
                 layers.MaxPooling2D(pool_size=(3, 3)),
                 
                 layers.Conv2D(64, kernel_size=3, strides=1, activation="relu"),
-                layers.MaxPooling2D(pool_size=(2, 2)),
+                layers.MaxPooling2D(pool_size=(3, 3)),
                                 
                 layers.Conv2D(128, kernel_size=3, strides=1, activation="relu"),    
                 layers.MaxPooling2D(pool_size=(2, 2)),
                 
                 layers.Conv2D(256, kernel_size=3, strides=1, activation="relu"),
-                layers.MaxPooling2D(pool_size=(3, 3)),
+                layers.MaxPooling2D(pool_size=(2, 2)),
                 
                 layers.Flatten(),
                 layers.Dropout(0.4),
