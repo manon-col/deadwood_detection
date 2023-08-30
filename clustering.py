@@ -436,7 +436,7 @@ class ClEngine:
 
         else: print("Please run the clustering method first.")
     
-    def keep_clusters(self, cluster_list):
+    def keep_clusters(self, cluster_list, relabel=True):
         """
         Keep only clusters whose index is in cluster_list, filter the others.
 
@@ -444,17 +444,24 @@ class ClEngine:
         ----------
         cluster_list : list
             List of clusters (cluster indexes/labels) to keep.
+        relabel : boolean
+            If True, the clusters are relabelled starting from 1. The default
+            is True.
             
         """
         
-        cluster_list = [int(label) for label in cluster_list]
-        
-        for cluster in self._raw_clusters:
+        if cluster_list:
             
-            if cluster.get_label() in cluster_list: cluster.is_filtered(False)
-            else: cluster.is_filtered(True)
-        
-        self._create_clusters_list()
+            cluster_list = [int(label) for label in cluster_list]
+            
+            for cluster in self._raw_clusters:
+                
+                if cluster.get_label() in cluster_list:
+                    cluster.is_filtered(False)
+                    
+                else: cluster.is_filtered(True)
+            
+            self._create_clusters_list(relabel=relabel)
     
     def reset_filtering(self):
         """
@@ -466,10 +473,16 @@ class ClEngine:
         
         self._create_clusters_list()
 
-    def _create_clusters_list(self):
+    def _create_clusters_list(self, relabel=True):
         """
         Create the list of clusters to save from unfiltered clusters.
-
+        
+        Parameters
+        ----------
+        relabel : boolean
+            If True, the clusters are relabelled starting from 1. The default
+            is True.
+            
         """
         
         # Empty list
@@ -479,10 +492,12 @@ class ClEngine:
             
             if not cluster.is_filtered(): self._clusters.append(cluster)
 
-        # Relabel clusters
-        for index in range(len(self._clusters)):
+        if relabel is True:
             
-            self._clusters[index].set_label(index+1)
+            # Relabel clusters
+            for index in range(len(self._clusters)):
+                
+                self._clusters[index].set_label(index+1)
 
     def save_all_points(self, folder, suffix=''):
         """
