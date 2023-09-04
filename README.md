@@ -8,26 +8,24 @@ The following python packages are needed. For TensorFlow setup, please see docum
 pip install laspy
 pip install pandas
 pip install hdbscan
+pip install alphashape
 pip install scikit-learn
 ```
-The following R packages are also needed.
+The lidR R package is also needed.
 ```
 install.packages("lidR")
-# install.packages("devtools")
-devtools::install_github("lmterryn/ITSMe", build_vignettes = TRUE)
 ```
 
 ## Documentation <br />
 <br />
 
-laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/latest/index.html``<br />
-scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
+Laspy, Python library for lidar LAS/LAZ IO: ``https://laspy.readthedocs.io/en/latest/index.html``<br />
+Scikit-learn, Machine-Learning in Python: ``https://scikit-learn.org/stable/``<br />
 The hdbscan clustering library: ``https://hdbscan.readthedocs.io/en/latest/index.html``<br />
 TensorFlow setup with pip: ``https://www.tensorflow.org/install/pip?hl=en``<br />
 Convolutional Neural Network with TensorFlow: ``https://www.tensorflow.org/tutorials/images/cnn?hl=fr``<br />
 NNCLR model: ``https://keras.io/examples/vision/nnclr/``<br />
-TreeQSM: ``https://github.com/InverseTampere/TreeQSM``<br />
-ITSMe: ``https://github.com/lmterryn/ITSMe``<br /><br />
+Alpha Shape Toolbox: ``https://github.com/InverseTampere/TreeQSM](https://alphashape.readthedocs.io/en/latest/``<br /><br />
 
 ## References <br />
 <br />
