@@ -1,6 +1,11 @@
 library(readr)
 library(dplyr)
 library(Metrics)
+library(viridis)
+library(ggplot2)
+# library(ggpmisc)
+library(ggpubr)
+library(car)
 
 file <- "field_inventory.csv"
 
@@ -12,58 +17,99 @@ df <- df %>%
 
 stats <- df %>%
   group_by(plot) %>%
-  summarise(detection_level = (n() - sum(detected == "no")) / n(),
-            detectability = (n() - sum(detectable == "no")) / n(),
-            model_accuracy = sum(detected == "yes" & detectable == "yes")/
+  summarise(nb_reference = n(),
+            nb_detectable = sum(detectable == "yes"),
+            nb_detected = sum(detected == "yes"),
+            detectability = 100*(n() - sum(detectable == "no")) / n(),
+            detection_level = 100*(n() - sum(detected == "no")) / n(),
+            model_accuracy = 100*sum(detected == "yes" & detectable == "yes")/
               sum(detectable == "yes"))
 
 stats <- rbind(stats, c("Mean",
-                        mean(stats$detection_level),
+                        mean(stats$nb_reference),
+                        mean(stats$nb_detectable),
+                        mean(stats$nb_detected),
                         mean(stats$detectability),
+                        mean(stats$detection_level),
                         mean(stats$model_accuracy)))
 
 stats <- rbind(stats, c("Min",
-                        min(stats$detection_level),
+                        min(stats$nb_reference),
+                        min(stats$nb_detectable),
+                        min(stats$nb_detected),
                         min(stats$detectability),
+                        min(stats$detection_level),
                         min(stats$model_accuracy)))
 
 stats <- rbind(stats, c("Max",
-                        max(stats$detection_level),
+                        max(stats$nb_reference),
+                        max(stats$nb_detectable),
+                        max(stats$nb_detected),
                         max(stats$detectability),
+                        max(stats$detection_level),
                         max(stats$model_accuracy)))
 
+# Round with 2 digits
+stats <- stats %>%
+  mutate_at(vars(-all_of("plot")), as.numeric) %>%
+  mutate_if(is.numeric, round, digits = 2)
+
 print(stats)
+write.csv2(stats, "plot_count_accuracy.csv", row.names = FALSE) # save file
 
-# Retrieve volume data and write a csv file
+# Retrieve volume data at the element level, calculate total volume at the plot
+# level
 
-result_df <- data.frame(plot = character(0), element = character(0),
+
+vol_df <- data.frame(plot = character(0), element = character(0),
                        reference_volume = numeric(0),
-                       volume_detected = numeric(0),
-                       volume_detectable = numeric(0))
+                       detectable_volume = numeric(0),
+                       detected_volume = numeric(0))
+
+plot_vol_df <- data.frame(plot = character(0),
+                          total_reference_volume = numeric(0),
+                          total_detectable_volume = numeric(0),
+                          percent_detectable = numeric(0),
+                          total_detected_volume = numeric(0),
+                          percent_detected = numeric(0),
+                          model_acc_percent = numeric(0))
 
 for (plot in unique(df$plot)) {
-  
+
   path_volumes <- file.path("..", "deadwood", paste0(plot, "_cl_volumes.csv"))
-  volumes <- read.csv2(path_volumes)
+  volumes <- read.csv(path_volumes)
+  
+  plot_detected_volume <- 0
+  all_id_detected <- c()
+  plot_detectable_volume <- 0
+  all_id_detectable <- c()
   
   for (element in unique(df$element[df$plot==plot])) {
     
     subset_df <- df[df$plot == plot & df$element == element, ]
-    id_cluster_detected <- strsplit(subset_df$id_cluster_dw, "; ")[[1]]
-    id_cluster_detectable <- strsplit(subset_df$id_cluster_np, "; ")[[1]]
-    
-    result_df <- data.frame()
+    id_cluster_detected <- strsplit(subset_df$id_cluster_detected, "; ")[[1]]
+    id_cluster_detectable <- strsplit(subset_df$id_cluster_detectable, "; ")[[1]]
     detected_volume <- 0
     detectable_volume <- 0
-    
+
     for (id in id_cluster_detected) {
-      detected_volume <- detected_volume +
-        volumes[volumes$cluster == id, "volume"]
+      volume <- volumes[volumes$cluster == id, "volume"]
+      detected_volume <- detected_volume + volume
+      
+      if (!(id %in% all_id_detected)) {
+        plot_detected_volume <- plot_detected_volume + volume
       }
+      all_id_detected <- c(all_id_detected, id)
+    }
     
     for (id in id_cluster_detectable) {
-      detectable_volume <- detectable_volume +
-        volumes[volumes$cluster == id, "volume"]
+      volume <- volumes[volumes$cluster == id, "volume"]
+      detectable_volume <- detectable_volume + volume
+      
+      if (!(id %in% all_id_detectable)) {
+        plot_detectable_volume <- plot_detectable_volume + volume
+      }
+      all_id_detectable <- c(all_id_detectable, id)
     }
     
     if (length(id_cluster_detected)+length(id_cluster_detectable)>0) {
@@ -71,40 +117,155 @@ for (plot in unique(df$plot)) {
       new_row <- data.frame(plot = plot,
                             element = element,
                             reference_volume = subset_df$total_volume,
-                            detected_volume = detected_volume,
-                            detectable_volume = detectable_volume)
+                            detectable_volume = detectable_volume,
+                            detected_volume = detected_volume)
       
-      result_df <- rbind(result_df, new_row)
+      vol_df <- rbind(vol_df, new_row)
     }
   }
+  
+  new_row <- data.frame(plot=plot,
+                        total_reference_volume =
+                          sum(df[df$plot==plot,]$total_volume),
+                        total_detectable_volume = plot_detectable_volume,
+                        percent_detectable=100*plot_detectable_volume/
+                          sum(df[df$plot==plot,]$total_volume),
+                        total_detected_volume = plot_detected_volume,
+                        percent_detected=100*plot_detected_volume/
+                          sum(df[df$plot==plot,]$total_volume),
+                        model_acc_percent=100*plot_detected_volume/
+                          plot_detectable_volume)
+
+  plot_vol_df <- rbind(plot_vol_df, new_row)
 }
 
-colnames(result_df) <- c("plot", "element", "reference_volume",
-                         "detected_volume", "detectable_volume")
+# Save csv for volume data at element level
 
-write.csv2(result_df, "corresp_volume.csv", row.names = FALSE)
+colnames(vol_df) <- c("plot", "element", "reference_volume",
+                      "detectable_volume", "detected_volume")
+write.csv2(vol_df, "element_volumes.csv", row.names = FALSE)
 
-# Calculate total volumes
+# Save csv for volume data at plot level
 
-df_vol <- read.csv2("corresp_volume.csv")
+plot_vol_df <- rbind(plot_vol_df,
+                     c("Mean",
+                       mean(plot_vol_df$total_reference_volume),
+                       mean(plot_vol_df$total_detectable_volume),
+                       mean(plot_vol_df$percent_detectable),
+                       mean(plot_vol_df$total_detected_volume),
+                       mean(plot_vol_df$percent_detected),
+                       mean(plot_vol_df$model_acc_percent)),
+                     c("Min",
+                       min(plot_vol_df$total_reference_volume),
+                       min(plot_vol_df$total_detectable_volume),
+                       min(plot_vol_df$percent_detectable),
+                       min(plot_vol_df$total_detected_volume),
+                       min(plot_vol_df$percent_detected),
+                       min(plot_vol_df$model_acc_percent)),
+                     c("Max",
+                       max(plot_vol_df$total_reference_volume),
+                       max(plot_vol_df$total_detectable_volume),
+                       max(plot_vol_df$percent_detectable),
+                       max(plot_vol_df$total_detected_volume),
+                       max(plot_vol_df$percent_detected),
+                       max(plot_vol_df$model_acc_percent)))
 
-tot_vol <- df_vol %>%
-  group_by(plot) %>%
-  summarise(total_volume_ref = sum(reference_volume),
-            total_volume_detected = sum(detected_volume),
-            total_volume_detectable = sum(detectable_volume))
+# Round with 3 digits
+plot_vol_df <- plot_vol_df %>%
+  mutate_at(vars(-all_of("plot")), as.numeric) %>%
+  mutate_if(is.numeric, round, digits = 3)
+colnames(plot_vol_df) <- c("plot", "total_reference_volume",
+                         "total_detectable_volume", "percent_detectable",
+                         "total_detected_volume", "percent_detected",
+                         "model_acc")
+write.csv2(plot_vol_df, "plot_volumes.csv", row.names = FALSE)
 
-# Calculate bias and RMSE
+# Calculate bias and RMSE for matched volumes
 
-rmse_detected <- rmse(tot_vol$total_volume_ref, tot_vol$total_volume_detected)
-rmse_detectable <- rmse(tot_vol$total_volume_ref, tot_vol$total_volume_detectable)
-bias_detected <- bias(tot_vol$total_volume_ref, tot_vol$total_volume_detected)
-bias_detectable <- bias(tot_vol$total_volume_ref, tot_vol$total_volume_detectable)
+df_plot <- read.csv2("plot_volumes.csv")
+df_plot <- head(df_plot, -3)
 
-bias_rmse <- data.frame(colnames("total_volume_detectable",
-                                 "total_volume_detected"),
-                        rownames("bias", "rmse"))
+
+ref_vol <- as.numeric(df_plot$total_reference_volume)
+detected_vol <- as.numeric(df_plot$total_detected_volume)
+detectable_vol <- as.numeric(df_plot$total_detectable_volume)
+
+rmse_detected <- rmse(ref_vol, detected_vol)
+rmse_detectable <- rmse(ref_vol, detectable_vol)
+bias_detected <- bias(ref_vol, detected_vol)
+bias_detectable <- bias(ref_vol, detectable_vol)
+
+bias_rmse <- data.frame(bias=numeric(0), rmse=numeric(0))
 
 bias_rmse <- rbind(bias_rmse,
-                   c(bias_detectable, bias_detected),
-                   c(rmse_detectable, rmse_detected))
+                   data.frame(bias=bias_detectable,
+                              rmse=rmse_detectable),
+                   data.frame(bias=bias_detected,
+                              rmse=rmse_detected))
+
+# Calculate bias and RMSE for TOTAL deadwood within inventory radius
+# (matched + other)
+
+inventory_volumes <- data.frame(plot=character(0), inventory_volume=numeric(0))
+
+for (plot in unique(df$plot)) {
+  
+  path_inventory_volumes <- file.path("..", "deadwood",
+                                      paste0(plot, "_cl_volumes_inventory.csv"))
+  
+  volumes <- read.csv(path_inventory_volumes)
+  sum_volumes <- sum(as.numeric(volumes$volume), na.rm = TRUE)
+  
+  new_row <- data.frame(plot = plot, inventory_volume = sum_volumes)
+  inventory_volumes <- rbind(inventory_volumes, new_row)
+}
+
+rmse_inv <- rmse(actual=ref_vol, predicted=inventory_volumes$inventory_volume)
+bias_inv <- bias(actual=ref_vol, predicted=inventory_volumes$inventory_volume)
+
+print(inventory_volumes)
+print(rmse_inv)
+print(bias_inv)
+
+bias_rmse <- rbind(bias_rmse,
+                   data.frame(bias=bias_inv,
+                              rmse=rmse_inv))
+# Round with 2 digits
+
+bias_rmse <- bias_rmse %>%
+  mutate_if(is.numeric, round, digits = 2)
+
+# Save all bias and rmse
+
+colnames(bias_rmse) <- c("bias", "rmse")
+rownames(bias_rmse) <- c("detectable", "detected", "estimated_inventory")
+
+print(bias_rmse)
+write.csv2(bias_rmse, "bias_rmse.csv")
+
+# Linear regression
+
+df_vol <- read.csv2("element_volumes.csv")
+
+df_vol <- df_vol[-c(22,72),]
+df_vol$plot <- as.factor(df_vol$plot)
+
+lm <- lm(detectable_volume ~ reference_volume, data=df_vol,
+             na.action=na.exclude)
+summary(lm)
+
+# scatterplot(detectable_volume ~ reference_volume, data=df_vol)
+
+
+ggplot(data=df_vol, aes(x=reference_volume, y=detectable_volume, col=plot)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "#69b3a2")+ 
+  # geom_smooth(method = "lm", color = "#69b3a2", mapping = aes(weight = 1/reference_volume))+ 
+  stat_regline_equation( aes(label = ..rr.label..)) +
+  labs(x = "Reference volume", y = "Detectable volume") +
+  scale_color_manual(values = viridis_pal()(length(unique(df_vol$plot)))) +
+  theme_minimal() +
+  theme(
+    axis.line = element_line(size = 0.5, linetype = 1)) +
+  scale_x_continuous(expand = c(0, 0, 0, 0.1)) +
+  scale_y_continuous(expand = c(0, 0, 0, 0.1))
