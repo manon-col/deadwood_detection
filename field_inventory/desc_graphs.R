@@ -103,17 +103,50 @@ plot_box_circ <- ggplot(data, aes(species, mean_circ)) +
                      breaks = scales::pretty_breaks(n = 2)) +
   scale_color_viridis_d()
 
-# Arrange 2 graphs together
-des <- ggarrange(
-  plot_spec_saprox,
-  plot_box_vol,
-  nrow = 2
-)
+# plot_detectability_volume <- ggplot(data, aes(detectable, mean_circ)) +
+#   geom_boxplot(aes(col=detectable), show.legend=FALSE) +
+#   labs(x = "Detectability", y = "Log circ") +
+#   theme_minimal() +
+#   theme(axis.line = element_line(size = 0.5, linetype=1),
+#         panel.grid.major.x = element_blank(),
+#         panel.grid.minor.x = element_blank(),
+#         axis.text.x = element_text(hjust=1, vjust=1, angle=45)
+#   ) +
+#   # scale_y_discrete(expand = c(0,0,0,1),
+#   #                    breaks = scales::pretty_breaks(n = 2)) +
+#   scale_y_continuous(trans = 'log10',
+#                      breaks = trans_breaks("log10", function(x) 10^x,
+#                                            n = 6, only.loose = TRUE),
+#                      labels = label_number(scale = 10 ^ (1 / 3)))
+#   scale_color_viridis_d()
+# print(plot_detectability_volume)
 
-# Save plot
-ggsave(plot = des,
-       filename = "data_description.png",
-       height = 2000,
+# Arrange 2 graphs together
+# des <- ggarrange(
+#   plot_spec_saprox,
+#   plot_box_vol,
+#   nrow = 2
+# )
+
+# Save plots
+
+# ggsave(plot = des,
+#        filename = "data_description.png",
+#        height = 2000,
+#        width = 1400,
+#        units = "px",
+#        bg = "white")
+
+ggsave(plot=plot_spec_saprox,
+       filename = "boxplot_species_saprox.png",
+       height = 1000,
+       width = 1400,
+       units = "px",
+       bg = "white")
+
+ggsave(plot = plot_box_vol,
+       filename = "boxplot_species_volume.png",
+       height = 1000,
        width = 1400,
        units = "px",
        bg = "white")
