@@ -97,7 +97,7 @@ class ClEngine:
         # Load existing clusters
         if hasattr(self._las, 'cluster'):
             
-            for cluster in range(1, len(np.unique(self._las.cluster))+1):
+            for cluster in (np.unique(self._las.cluster)):
                 
                 # Load existing volumes
                 if hasattr(self._las, 'volume'):
@@ -376,6 +376,7 @@ class ClEngine:
                   delta=None,
                   min_dist=None,
                   coord_file=None,
+                  plot_name=None,
                   distance_from_centre=None,
                   sep=';',
                   dec=','):
@@ -401,6 +402,8 @@ class ClEngine:
             Path leading to the csv file that contains coordinates of the plot
             centre. If set to None, the centre coordinates are 0,0. The
             default is None.
+        plot_name : string, optional
+            Plot name as written in coord_file. The default is None.
         distance_from_centre : integer, optional
             Actual radius of the inventory plot. Set to None to ignore
             distance_from_centre filtering. The default is None.
@@ -421,7 +424,7 @@ class ClEngine:
 
                 cluster.nb_points_filter(nb_points=nb_points)
                 cluster.distance_from_centre_filter(
-                    plot_name=self._filename,
+                    plot_name=plot_name,
                     distance=distance_from_centre,
                     coord_file=coord_file,
                     sep=sep,
@@ -708,7 +711,9 @@ class ClEngine:
             # Calculate volume of all clusters
             for cluster in self._clusters:
                 cluster.calculate_volume(alpha=alpha, plot=plot)
-                
+            
+            print("Done.")
+            
         else: print("Please run the clustering method first.")
         
     def save_volumes_csv(self, folder, suffix=''):
@@ -741,6 +746,8 @@ class ClEngine:
                 for cluster in self._clusters:
                     writer.writerow([cluster.get_label(),
                                      cluster.get_volume()])
+            
+            print(f"Volumes successfully saved in {path}.")
         
         else: print("Please run the clustering method first.")
         
@@ -1006,7 +1013,7 @@ class Cluster:
             # Get xy coordinates only
             points_xy = self._points[:, :2]
             
-            centre_xy = np.array([0,0])
+            centre_xy = np.array([[0, 0]])
             
             if coord_file is not None:
                 
