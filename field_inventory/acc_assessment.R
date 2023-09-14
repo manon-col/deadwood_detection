@@ -1,9 +1,10 @@
 library(readr)
 library(dplyr)
+library(lmtest)
 library(Metrics)
 library(viridis)
 library(ggplot2)
-# library(ggpmisc)
+library(ggpmisc)
 library(ggpubr)
 library(car)
 
@@ -250,22 +251,40 @@ df_vol <- read.csv2("element_volumes.csv")
 df_vol <- df_vol[-c(22,72),]
 df_vol$plot <- as.factor(df_vol$plot)
 
-lm <- lm(detectable_volume ~ reference_volume, data=df_vol,
-             na.action=na.exclude)
+lm <- lm(detectable_volume~reference_volume - 1, data=df_vol,
+         na.action=na.exclude)
+
 summary(lm)
 
-# scatterplot(detectable_volume ~ reference_volume, data=df_vol)
+# Tests
+
+res = lm$residuals
+raintest(lm) # p-value>0.05: linearity hypothesis verified
+Box.test(res, type = "Ljung") # p<0.05: autocorrelation
+dwtest(lm) # p<0.05: autocorelation of 1st order
+bptest(lm) # p<0.05: homoscedasticity is present
+shapiro.test(res)  # < p<0.05: normality hypothesis rejected
+
+
+df_vol$log_x <- log(df_vol$reference_volume)
+df_vol$log_y <- log(df_vol$detectable_volume)
 
 
 ggplot(data=df_vol, aes(x=reference_volume, y=detectable_volume, col=plot)) +
+  # geom_smooth(method = "lm", formula = y~x-1, color = "#69b3a2") +
   geom_point() +
-  geom_smooth(method = "lm", color = "#69b3a2")+ 
-  # geom_smooth(method = "lm", color = "#69b3a2", mapping = aes(weight = 1/reference_volume))+ 
-  stat_regline_equation( aes(label = ..rr.label..)) +
+  geom_abline(slope=1, intercept = 0, linetype = "dashed") +
   labs(x = "Reference volume", y = "Detectable volume") +
+  annotate("text", x = 0.65, y = 0.55, label = "y=x", fontface = "italic") +
   scale_color_manual(values = viridis_pal()(length(unique(df_vol$plot)))) +
   theme_minimal() +
   theme(
     axis.line = element_line(size = 0.5, linetype = 1)) +
-  scale_x_continuous(expand = c(0, 0, 0, 0.1)) +
-  scale_y_continuous(expand = c(0, 0, 0, 0.1))
+  scale_x_continuous(expand=c(0,0), limits = c(0, 2)) +
+  scale_y_continuous(expand=c(0,0), limits = c(0, 0.6))
+
+ggsave(filename = "reg_volume.png",
+       height = 1500,
+       width = 2000,
+       units = "px",
+       bg = "white")
