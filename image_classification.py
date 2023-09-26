@@ -85,7 +85,11 @@ class Model:
     
     def visualize_augmented_images(self, image_dataset, num_images=5,
                                    save_path=None):
+        """
+        Plot some augmented images and original images in order to compare
+        them.
 
+        """
         plt.figure(figsize=(num_images * 2, 4))
     
         augmenter_model = augmenter('visu', input_shape=self._input_shape)
@@ -194,6 +198,8 @@ class Model:
             loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
             metrics=[keras.metrics.SparseCategoricalAccuracy(name="acc")],
         )
+        
+        # Try to implement AUROC and AUC calculation in the future
 
         finetuning_history = finetuning_model.fit(
             self._labelled_train_ds, epochs=self._num_epochs,
@@ -377,7 +383,8 @@ class Model:
 
 def augmenter(name, input_shape):
     """
-    Generate image augmentations to increase variability over epochs.
+    Generate image augmentations (random translations and random rotations) to
+    increase variability over epochs.
 
     """
     
@@ -397,8 +404,10 @@ def augmenter(name, input_shape):
 
 def encoder(name, input_shape):
     """
-    Define encoder architecture, that consists in 4 convolutional layers with
-    increasing width (from 32 to 256).
+    Define encoder architecture. The encoder used in our study (custom)
+    consists in 4 convolutional layers with a width of 128. Other architectures
+    (basic = the one used in the documentation, and VGG-16) were associated
+    with worse results.
 
     """
     
