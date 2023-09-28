@@ -1,8 +1,7 @@
 # deadwood_detection
 
 This study is carried out as part of a 2nd year agronomy engineering school internship (equivalent to M1).<br />
-Work in progress...<br />
-![Current workflow](https://github.com/manon-col/deadwood_detection/edit/main/workflow.jpg?raw=true) <br /><br />
+![workflow](https://github.com/manon-col/deadwood_detection/edit/main/workflow.jpg?raw=true) <br /><br />
 The following python packages are needed. For TensorFlow setup, please see documentation.<br />
 ```
 pip install laspy
