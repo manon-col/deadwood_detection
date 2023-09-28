@@ -40,28 +40,33 @@ class ClEngine:
     Methods:
         
     - __init__(self, las_file): Initialize the object and read the LAS file.
-    - DBSCAN_clustering(self, eps=0.05, min_samples=100): Perform euclidean
-      clustering using the DBSCAN algorithm.
-    - HDBSCAN_clustering(self, min_cluster_size=500,
-      max_cluster_size=200000, min_samples=10): Cluster data finely using
-      hierarchical density-based clustering.
-    - get_clusters(self): Return the last created list of clusters.
-    - filtering(self, nb_points=None, coord_file=None, sep=';', dec=',',
-      distance_from_centre=18, delta=0.5, min_dist=1): Basic cluster filter
-      based on various criteria.
-    - keep_clusters(self, cluster_list): Keep only clusters whose index is in
-      cluster_list, filter the others.
-    - reset_filtering(self): Set the status of all clusters to unfiltered.
-    - save_all_points(self, folder, suffix): Save the clustering results in a
-      new LAS file, in the specified folder, with the cluster label in the
-      'cluster' field (filtered clusters are not saved).
-    - save_individual_points(self, folder): Create and save .las files from
-      each cluster, in a sub-folder of the specified directory.
-    - save_individual_images(self, folder, figsize=(4, 4), dpi=75): Create
-      and save .png images from each cluster, in a sub-folder of the specified
-      directory.
-    - draw_clusters(self): Draw the clustering results (simply), with points
-      in the same cluster of the same colour.
+    - DBSCAN_clustering(self, tuning=False, n_iter=10, display=False,
+      eps=0.05, min_samples=100): Perform Euclidean clustering using the DBSCAN
+    algorithm.
+    - HDBSCAN_clustering(self, tuning=False, n_iter=10, n_test=None,
+    display=False, min_cluster_size=500, max_cluster_size=200000,
+    min_samples=10): Cluster data finely using hierarchical density-based
+    clustering.
+    - get_clusters(self): Return the list of clusters.
+    - filtering(self, nb_points=None, delta=None, min_dist=None,
+      coord_file=None, plot_name=None, distance_from_centre=None, sep=';',
+      dec=','): Apply basic cluster filtering based on various criteria.
+    - keep_clusters(self, cluster_list, relabel=True): Keep specified clusters
+    and optionally relabel them.
+    - reset_filtering(self): Reset filtering status for all clusters.
+    - save_all_points(self, folder, suffix=''): Save clustering results in a
+    new LAS file.
+    - save_individual_points(self, folder, suffix=''): Save each cluster as an
+    individual LAS file.
+    - save_individual_images(self, folder, figsize=(4, 4), dpi=75): Save images
+    of each cluster in a sub-folder.
+    - draw_clusters(self): Visualize clustering results by plotting clusters.
+    - calculate_volumes(self, alpha=50, plot=False): Calculate volumes of
+    clusters using alpha shapes.
+    - save_volumes_csv(self, folder, suffix=''): Save cluster volumes to a CSV
+    file.
+    - calculate_az_dist(self, results_file=None): Calculate azimuth and
+    distance from plot center for each cluster.
     
     """
     
@@ -1144,6 +1149,7 @@ class Cluster:
 class ClusteringTuner(BaseEstimator):
     """
     Hyperparameter tuner for DBSCAN and HDBSCAN clustering algorithms.
+    /!\ this part cannot be used as is (scorers need to be implemented).
     
     """
     
